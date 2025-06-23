@@ -1,0 +1,8 @@
+.env
+.env.Local
+.env.production
+
+*.env
+
+vendor/
+credentials/
