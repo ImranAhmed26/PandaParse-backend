@@ -3,19 +3,19 @@ import { UserRole } from '@prisma/client';
 
 export class UserResponseDto {
   @ApiProperty()
-  id: string;
+  id!: string;
 
   @ApiProperty()
-  email: string;
+  email!: string;
 
   @ApiProperty()
-  name: string;
+  name!: string;
 
   @ApiProperty({ enum: UserRole })
-  role: UserRole;
+  role!: UserRole;
 
   @ApiProperty()
-  createdAt: Date;
+  createdAt!: Date;
 
   @ApiProperty({ nullable: true })
   companyId?: string;

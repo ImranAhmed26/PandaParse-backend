@@ -2,18 +2,18 @@ import { IsEmail, IsNotEmpty, IsEnum, IsOptional, IsString } from 'class-validat
 import { UserRole } from '@prisma/client';
 import { ApiProperty } from '@nestjs/swagger';
 
-export class UserCreateDto {
+export class UserCreateDto {ç
   @IsEmail()
   @ApiProperty()
-  email: string;
+  email!: string;
 
   @IsNotEmpty()
   @ApiProperty()
-  name: string;
+  name!: string;
 
   @IsNotEmpty()
   @ApiProperty()
-  password: string;
+  password!: string;
 
   @IsOptional()
   @IsEnum(UserRole)

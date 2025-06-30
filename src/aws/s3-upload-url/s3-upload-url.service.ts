@@ -25,7 +25,7 @@ export class S3UploadUrlService {
   }
 
   async generateUploadUrl(fileType: string): Promise<{ url: string; key: string }> {
-    const key = `uploads/${uuidv4()}.${fileType}`;
+    const key = `invoice-uploads/${uuidv4()}.${fileType}`;
    const command = new PutObjectCommand({
       Bucket: this.bucket,
       Key: key,
