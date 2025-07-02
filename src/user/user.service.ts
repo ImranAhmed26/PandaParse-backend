@@ -14,7 +14,9 @@ export class UserService {
   }
 
   async findAll() {
-    return this.prisma.user.findMany();
+    return this.prisma.user.findMany({
+      include: { documents: true, workspace: true, jobs: true },
+    });
   }
 
   async findOne(id: string) {
