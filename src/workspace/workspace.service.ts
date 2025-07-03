@@ -7,8 +7,14 @@ import { UpdateWorkspaceDto } from './dto/update-workspace.dto';
 export class WorkspaceService {
   constructor(private prisma: PrismaService) {}
 
-  create(data: CreateWorkspaceDto) {
-    return this.prisma.workspace.create({ data });
+  create(data: CreateWorkspaceDto, userId: string) {
+    return this.prisma.workspace.create({
+      data: {
+        name: data.name,
+        userId,
+        companyId: data.companyId,
+      },
+    });
   }
 
   findAll() {

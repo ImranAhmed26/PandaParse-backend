@@ -7,8 +7,17 @@ import { UpdateCompanyDto } from './dto/update-company.dto';
 export class CompanyService {
   constructor(private prisma: PrismaService) {}
 
-  create(data: CreateCompanyDto) {
-    return this.prisma.company.create({ data });
+  create(data: CreateCompanyDto, userId: string) {
+    return this.prisma.company.create({
+      data: {
+        name: data.name,
+        users: {
+          connect: {
+            id: userId,
+          },
+        },
+      },
+    });
   }
 
   findAll() {
