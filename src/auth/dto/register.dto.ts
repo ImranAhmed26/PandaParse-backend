@@ -3,12 +3,12 @@ import { IsEmail, IsNotEmpty, IsString, Matches, Min, MinLength } from 'class-va
 export class RegisterDto {
   @IsEmail()
   @IsNotEmpty()
-  email: string;
+  email!: string;
 
   @IsString()
   @IsNotEmpty()
   @MinLength(3)
-  name: string;
+  name!: string;
 
   @Matches(/^(?=.*[A-Z])(?=.*[a-z])(?=.*\d)(?=.*[\W_]).{10,}$/, {
     message:
@@ -17,5 +17,5 @@ export class RegisterDto {
   @IsString()
   @IsNotEmpty()
   @MinLength(10)
-  password: string;
+  password!: string;
 }
