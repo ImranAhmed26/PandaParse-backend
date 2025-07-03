@@ -39,6 +39,7 @@
     "dotenv": "^16.5.0",
     "mime-types": "^3.0.1",
     "multer": "^2.0.0",
+    "passport-jwt": "^2.2.1",
     "prisma": "^6.8.2",
     "reflect-metadata": "^0.2.2",
     "rxjs": "^7.8.1",
