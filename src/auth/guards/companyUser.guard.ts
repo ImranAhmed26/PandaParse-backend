@@ -3,7 +3,7 @@ import { PrismaService } from 'src/prisma/prisma.service';
 import { UserRole } from '@prisma/client';
 
 @Injectable()
-export class CompanyGuard implements CanActivate {
+export class CompanyUserGuard implements CanActivate {
   constructor(private prisma: PrismaService) {}
 
   async canActivate(context: ExecutionContext): Promise<boolean> {

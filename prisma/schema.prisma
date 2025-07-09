@@ -29,23 +29,21 @@ model User {
   Upload    Upload[]
 }
 
-
 model Company {
-  id        String        @id @default(uuid())
-  name      String        @unique
-  createdAt DateTime      @default(now())
+  id        String   @id @default(uuid())
+  name      String   @unique
+  createdAt DateTime @default(now())
 
   // 🔥 New: Owner of the company
-  ownerId   String        @unique
-  owner     User          @relation("CompanyOwner", fields: [ownerId], references: [id])
+  ownerId String @unique
+  owner   User   @relation("CompanyOwner", fields: [ownerId], references: [id])
 
   // All users under this company (including the owner)
-  users     User[]        @relation("CompanyUsers")
+  users User[] @relation("CompanyUsers")
 
   tokens    TokenBalance?
   workspace Workspace[]
 }
-
 
 model Document {
   id     String @id @default(uuid())
@@ -64,8 +62,8 @@ model Document {
   ocrResult   Json?
 
   workspace WorkspaceDocument[] // Many-to-many relation
-  createdAt  DateTime            @default(now())
-  updatedAt  DateTime            @updatedAt
+  createdAt DateTime            @default(now())
+  updatedAt DateTime            @updatedAt
 }
 
 model Upload {

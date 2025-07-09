@@ -16,6 +16,7 @@ export class CompanyService {
             id: userId,
           },
         },
+        ownerId: userId,
       },
     });
   }

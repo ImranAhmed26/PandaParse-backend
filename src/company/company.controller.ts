@@ -7,8 +7,9 @@ import { JwtAuthGuard } from 'src/auth/guards/jwt-auth.guard';
 import { RolesGuard } from 'src/auth/guards/roles.guard';
 import { UserRole } from '@prisma/client';
 import { Roles } from 'src/auth/decorators/roles.decorators';
-import { CompanyGuard } from 'src/auth/guards/company.guard';
+import { CompanyUserGuard } from 'src/auth/guards/companyUser.guard';
 import { CurrentUser } from 'src/auth/decorators/current-user.decorators';
+import { CompanyOwnerGuard } from 'src/auth/guards/companyOwner.guard';
 
 @Controller('company')
 @ApiTags('company')
@@ -19,6 +20,8 @@ export class CompanyController {
   @ApiOperation({ summary: 'Create a new company' })
   @ApiResponse({ status: 201, description: 'The record has been created successfully.' })
   @ApiResponse({ status: 400, description: 'Bad request.' })
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.ADMIN, UserRole.USER)
   create(@Body() dto: CreateCompanyDto, @CurrentUser() userId: string) {
     return this.companyService.create(dto, userId);
   }
@@ -39,7 +42,7 @@ export class CompanyController {
   @ApiResponse({ status: 200, description: 'Return the company with the given id.' })
   @ApiResponse({ status: 404, description: 'Company not found.' })
   @ApiBearerAuth()
-  @UseGuards(JwtAuthGuard, CompanyGuard, RolesGuard)
+  @UseGuards(JwtAuthGuard, CompanyUserGuard, RolesGuard)
   @Roles(UserRole.ADMIN, UserRole.USER)
   findOne(@Param('id') id: string) {
     return this.companyService.findOne(id);
@@ -51,7 +54,7 @@ export class CompanyController {
   @ApiResponse({ status: 400, description: 'Bad request.' })
   @ApiResponse({ status: 404, description: 'Company not found.' })
   @ApiBearerAuth()
-  @UseGuards(JwtAuthGuard, CompanyGuard, RolesGuard)
+  @UseGuards(JwtAuthGuard, CompanyOwnerGuard, RolesGuard)
   @Roles(UserRole.ADMIN, UserRole.USER)
   update(@Param('id') id: string, @Body() dto: UpdateCompanyDto) {
     return this.companyService.update(id, dto);
@@ -62,7 +65,7 @@ export class CompanyController {
   @ApiResponse({ status: 200, description: 'Return the deleted company.' })
   @ApiResponse({ status: 404, description: 'Company not found.' })
   @ApiBearerAuth()
-  @UseGuards(JwtAuthGuard, CompanyGuard, RolesGuard)
+  @UseGuards(JwtAuthGuard, CompanyOwnerGuard, RolesGuard)
   @Roles(UserRole.ADMIN)
   remove(@Param('id') id: string) {
     return this.companyService.remove(id);
