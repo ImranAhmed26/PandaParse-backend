@@ -14,25 +14,38 @@ model User {
   password  String
   role      UserRole @default(USER)
   createdAt DateTime @default(now())
-  company   Company? @relation(fields: [companyId], references: [id])
+
+  // 🔁 Belongs to a company (if not solo)
   companyId String?
+  company   Company? @relation("CompanyUsers", fields: [companyId], references: [id])
 
-  documents  Document[]
+  // 🔁 Optional: owns a company
+  ownedCompany Company? @relation("CompanyOwner")
+
+  documents Document[]
   workspace Workspace[]
-  jobs       Job[]
-  tokens     TokenBalance?
-
-  Upload Upload[]
+  jobs      Job[]
+  tokens    TokenBalance?
+  Upload    Upload[]
 }
+
 
 model Company {
   id        String        @id @default(uuid())
   name      String        @unique
   createdAt DateTime      @default(now())
-  users     User[]
+
+  // 🔥 New: Owner of the company
+  ownerId   String        @unique
+  owner     User          @relation("CompanyOwner", fields: [ownerId], references: [id])
+
+  // All users under this company (including the owner)
+  users     User[]        @relation("CompanyUsers")
+
   tokens    TokenBalance?
   workspace Workspace[]
 }
+
 
 model Document {
   id     String @id @default(uuid())

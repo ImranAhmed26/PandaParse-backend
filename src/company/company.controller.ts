@@ -27,7 +27,7 @@ export class CompanyController {
   @ApiOperation({ summary: 'Get all companies' })
   @ApiResponse({ status: 200, description: 'Return all companies.' })
   @ApiResponse({ status: 400, description: 'Bad request.' })
-  @ApiBearerAuth()
+  @ApiBearerAuth('access-token')
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles(UserRole.ADMIN)
   findAll() {

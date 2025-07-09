@@ -9,7 +9,14 @@ import { WorkspaceModule } from './workspace/workspace.module';
 import { AuthModule } from './auth/auth.module';
 
 @Module({
-  imports: [UserModule, ConfigModule.forRoot({ isGlobal: true }), UploadModule, CompanyModule, WorkspaceModule, AuthModule],
+  imports: [
+    UserModule,
+    ConfigModule.forRoot({ isGlobal: true }),
+    UploadModule,
+    CompanyModule,
+    WorkspaceModule,
+    AuthModule,
+  ],
   controllers: [AppController],
   providers: [AppService],
 })
