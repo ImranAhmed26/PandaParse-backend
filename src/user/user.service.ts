@@ -15,7 +15,7 @@ export class UserService {
 
   async findAll() {
     return this.prisma.user.findMany({
-      include: { documents: true, workspace: true, jobs: true },
+      include: { documents: true, jobs: true },
     });
   }
 

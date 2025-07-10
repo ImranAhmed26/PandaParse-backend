@@ -8,6 +8,8 @@ import { RolesGuard } from 'src/auth/guards/roles.guard';
 import { UserRole } from '@prisma/client';
 import { Roles } from 'src/auth/decorators/roles.decorators';
 import { CurrentUser } from 'src/auth/decorators/current-user.decorators';
+import { CompanyOwnerGuard } from 'src/auth/guards/companyOwner.guard';
+import { CompanyUserGuard } from 'src/auth/guards/companyUser.guard';
 
 @Controller('workspace')
 @ApiTags('workspace')
@@ -19,7 +21,7 @@ export class WorkspaceController {
   @ApiResponse({ status: 201, description: 'The record has been created successfully.' })
   @ApiResponse({ status: 400, description: 'Bad request.' })
   @ApiBearerAuth()
-  @UseGuards(JwtAuthGuard, RolesGuard)
+  @UseGuards(JwtAuthGuard, CompanyOwnerGuard, RolesGuard)
   @Roles(UserRole.ADMIN, UserRole.USER)
   create(@Body() dto: CreateWorkspaceDto, @CurrentUser() userId: string) {
     return this.workspaceService.create(dto, userId);
@@ -40,7 +42,7 @@ export class WorkspaceController {
   @ApiOperation({ summary: 'Get a workspace by id' })
   @ApiResponse({ status: 200, description: 'Return the workspace with the given id.' })
   @ApiBearerAuth()
-  @UseGuards(JwtAuthGuard, RolesGuard)
+  @UseGuards(JwtAuthGuard, CompanyUserGuard, RolesGuard)
   @Roles(UserRole.ADMIN, UserRole.USER)
   @ApiResponse({ status: 404, description: 'Workspace not found.' })
   findOne(@Param('id') id: string) {

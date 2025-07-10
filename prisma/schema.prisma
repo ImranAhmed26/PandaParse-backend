@@ -23,7 +23,6 @@ model User {
   ownedCompany Company? @relation("CompanyOwner")
 
   documents Document[]
-  workspace Workspace[]
   jobs      Job[]
   tokens    TokenBalance?
   Upload    Upload[]
@@ -41,8 +40,30 @@ model Company {
   // All users under this company (including the owner)
   users User[] @relation("CompanyUsers")
 
-  tokens    TokenBalance?
-  workspace Workspace[]
+  tokens TokenBalance?
+}
+
+model Workspace {
+  id         String              @id @default(uuid())
+  name       String
+  ownerId    String
+  ownderType OwnerType
+  documents  WorkspaceDocument[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([ownerId, name])
+}
+
+model WorkspaceDocument {
+  document   Document @relation(fields: [documentId], references: [id])
+  documentId String
+
+  workspace   Workspace @relation(fields: [workspaceId], references: [id])
+  workspaceId String
+
+  @@id([documentId, workspaceId])
 }
 
 model Document {
@@ -78,37 +99,6 @@ model Upload {
   userId   String
   job      Job?
   document Document?
-}
-
-model Workspace {
-  id String @id @default(uuid())
-
-  user   User   @relation(fields: [userId], references: [id])
-  userId String
-
-  // Optional: for company-wide access or visibility
-  company   Company? @relation(fields: [companyId], references: [id])
-  companyId String?
-
-  name      String
-  documents WorkspaceDocument[]
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  // Enforce unique workspace names per user or per company
-  @@unique([userId, name])
-  @@unique([companyId, name])
-}
-
-model WorkspaceDocument {
-  document   Document @relation(fields: [documentId], references: [id])
-  documentId String
-
-  workspace   Workspace @relation(fields: [workspaceId], references: [id])
-  workspaceId String
-
-  @@id([documentId, workspaceId])
 }
 
 model Job {
@@ -223,4 +213,9 @@ enum TokenTransactionType {
   CONSUME
   ADJUSTMENT
   REFUND
+}
+
+enum OwnerType {
+  USER
+  COMPANY
 }

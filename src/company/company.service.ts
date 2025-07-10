@@ -21,16 +21,19 @@ export class CompanyService {
     });
   }
 
-  findAll() {
+  findAll(userId: string) {
     return this.prisma.company.findMany({
-      include: { users: true, workspace: true },
+      where: {
+        ownerId: userId,
+      },
+      include: { users: true },
     });
   }
 
   findOne(id: string) {
     return this.prisma.company.findUnique({
       where: { id },
-      include: { users: true, workspace: true },
+      include: { users: true },
     });
   }
 
