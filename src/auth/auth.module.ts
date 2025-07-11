@@ -6,11 +6,13 @@ import { JwtModule } from '@nestjs/jwt';
 import { PassportModule } from '@nestjs/passport';
 import { PrismaModule } from 'src/prisma/prisma.module';
 import { JwtStrategy } from './strategies/jwt.strategies';
+import { UserModule } from 'src/user/user.module';
 
 @Module({
   imports: [
     PassportModule,
     PrismaModule,
+    UserModule,
     JwtModule.register({
       secret: jwtConstants.accessSecret,
       signOptions: { expiresIn: '2d' },

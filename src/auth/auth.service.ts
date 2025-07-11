@@ -5,12 +5,14 @@ import { RegisterDto } from './dto/register.dto';
 import * as bcrypt from 'bcrypt';
 import { LoginDto } from './dto/login.dto';
 import { jwtConstants } from './constants';
+import { UserService } from 'src/user/user.service';
 
 @Injectable()
 export class AuthService {
   constructor(
     private prisma: PrismaService,
-    private jwt: JwtService
+    private jwt: JwtService,
+    private userService: UserService,
   ) {}
 
   async register(dto: RegisterDto) {
@@ -27,13 +29,11 @@ export class AuthService {
       throw new BadRequestException('Password is required');
     }
 
-    const hash = await bcrypt.hash(dto.password, 10);
-    const user = await this.prisma.user.create({
-      data: {
-        email: dto.email,
-        name: dto.name,
-        password: hash,
-      },
+    const hashedPassword = await bcrypt.hash(dto.password, 10);
+    console.log('hashedPassword', hashedPassword);
+    const user = await this.userService.create({
+      ...dto,
+      password: hashedPassword,
     });
 
     return this.signToken(user.id, user.email, user.role);
@@ -83,7 +83,7 @@ export class AuthService {
         {
           secret: jwtConstants.refreshSecret,
           expiresIn: '7d',
-        }
+        },
       ),
     };
   }

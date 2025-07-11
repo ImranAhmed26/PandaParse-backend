@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateWorkspaceDto } from './dto/create-workspace.dto';
 import { UpdateWorkspaceDto } from './dto/update-workspace.dto';
+import { OwnerType } from '@prisma/client';
 
 @Injectable()
 export class WorkspaceService {
@@ -11,8 +12,8 @@ export class WorkspaceService {
     return this.prisma.workspace.create({
       data: {
         name: data.name,
-        userId,
-        companyId: data.companyId,
+        ownerId: userId,
+        ownerType: data.ownerType as OwnerType,
       },
     });
   }

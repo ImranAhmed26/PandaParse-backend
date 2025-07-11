@@ -2,30 +2,28 @@ import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateCompanyDto } from './dto/create-company.dto';
 import { UpdateCompanyDto } from './dto/update-company.dto';
+import { Prisma } from '@prisma/client';
 
 @Injectable()
 export class CompanyService {
   constructor(private prisma: PrismaService) {}
 
-  create(data: CreateCompanyDto, userId: string) {
-    return this.prisma.company.create({
+  create(data: CreateCompanyDto, userId: string, tx: Prisma.TransactionClient = this.prisma) {
+    return tx.company.create({
       data: {
         name: data.name,
+        ownerId: userId,
         users: {
           connect: {
             id: userId,
           },
         },
-        ownerId: userId,
       },
     });
   }
 
-  findAll(userId: string) {
+  findAll() {
     return this.prisma.company.findMany({
-      where: {
-        ownerId: userId,
-      },
       include: { users: true },
     });
   }

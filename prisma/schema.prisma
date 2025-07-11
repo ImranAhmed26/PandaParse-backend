@@ -47,7 +47,7 @@ model Workspace {
   id         String              @id @default(uuid())
   name       String
   ownerId    String
-  ownderType OwnerType
+  ownerType OwnerType
   documents  WorkspaceDocument[]
 
   createdAt DateTime @default(now())

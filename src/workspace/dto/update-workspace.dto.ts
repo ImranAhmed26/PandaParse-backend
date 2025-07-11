@@ -7,8 +7,4 @@ export class UpdateWorkspaceDto {
   @ApiPropertyOptional()
   name?: string;
 
-  @IsUUID()
-  @IsOptional()
-  @ApiPropertyOptional()
-  companyId?: string;
 }

@@ -10,10 +10,10 @@ export class CreateWorkspaceDto {
   @IsUUID()
   @IsNotEmpty()
   @ApiProperty()
-  userId!: string;
+  ownerId!: string;
 
   @IsUUID()
   @IsOptional()
   @ApiPropertyOptional()
-  companyId?: string;
+  ownerType?: string;
 }
