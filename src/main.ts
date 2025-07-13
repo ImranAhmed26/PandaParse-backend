@@ -21,12 +21,12 @@ async function bootstrap() {
         name: 'Authorization',
         in: 'header',
       },
-      'access-token' // Security name to match @ApiBearerAuth('access-token')
+      'access-token'
     )
     .build();
 
   const document = SwaggerModule.createDocument(app, config);
-  SwaggerModule.setup('api', app, document); // Swagger UI will be available at /api
+  SwaggerModule.setup('api', app, document);
 
   await app.listen(process.env.PORT ?? 8000);
 }
