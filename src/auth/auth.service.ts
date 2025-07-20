@@ -6,6 +6,11 @@ import * as bcrypt from 'bcrypt';
 import { LoginDto } from './dto/login.dto';
 import { jwtConstants } from './constants';
 import { UserService } from 'src/user/user.service';
+import { AuthResponseDto } from './dto/auth-response.dto';
+
+interface RefreshTokenPayload {
+  sub: string;
+}
 
 @Injectable()
 export class AuthService {
@@ -15,7 +20,7 @@ export class AuthService {
     private userService: UserService,
   ) {}
 
-  async register(dto: RegisterDto) {
+  async register(dto: RegisterDto): Promise<AuthResponseDto> {
     const existingUser = await this.prisma.user.findUnique({
       where: { email: dto.email },
     });
@@ -36,41 +41,43 @@ export class AuthService {
       password: hashedPassword,
     });
 
-    return this.signToken(user.id, user.email, user.role);
+    return this.signToken(user.id, user.email, user.role, user.name);
   }
 
-  async login(dto: LoginDto) {
+  async login(dto: LoginDto): Promise<AuthResponseDto> {
     const user = await this.prisma.user.findUnique({ where: { email: dto.email } });
     if (!user || !(await bcrypt.compare(dto.password, user.password))) {
       throw new UnauthorizedException('Invalid credentials');
     }
 
-    return this.signToken(user.id, user.email, user.role);
+    return this.signToken(user.id, user.email, user.role, user.name);
   }
 
-  async refresh(refreshToken: string) {
+  async refresh(refreshToken: string): Promise<AuthResponseDto> {
     try {
-      const payload = this.jwt.verify(refreshToken, {
+      const payload = this.jwt.verify<RefreshTokenPayload>(refreshToken, {
         secret: jwtConstants.refreshSecret,
       });
+
       const user = await this.prisma.user.findUnique({
         where: { id: payload.sub },
         select: {
           id: true,
           email: true,
           role: true,
+          name: true,
         },
       });
       if (!user) {
         throw new UnauthorizedException('Invalid refresh token');
       }
-      return this.signToken(user.id, user.email, user.role);
+      return this.signToken(user.id, user.email, user.role, user.name);
     } catch {
       throw new UnauthorizedException('Invalid refresh token');
     }
   }
 
-  private signToken(userId: string, email: string, role: string) {
+  private signToken(userId: string, email: string, role: string, name: string): AuthResponseDto {
     const payload = { sub: userId, email, role };
 
     return {
@@ -85,6 +92,12 @@ export class AuthService {
           expiresIn: '7d',
         },
       ),
+      user: {
+        id: userId,
+        name,
+        email,
+        role,
+      },
     };
   }
 }
