@@ -42,3 +42,9 @@ Thumbs.db
 # Local credentials
 credentials/
 vendor/
+
+
+# Kiro-specific files
+.kiro/
+.kiro/specs/
+.kiro/steering/
