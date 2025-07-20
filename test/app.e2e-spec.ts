@@ -13,10 +13,19 @@ describe('AppController (e2e)', () => {
     }).compile();
 
     app = moduleFixture.createNestApplication();
+
+    // Set the same global prefix as in main.ts
+    const apiPrefix = process.env.API_PREFIX || 'api';
+    app.setGlobalPrefix(apiPrefix);
+
     await app.init();
   });
 
-  it('/users (GET)', () => {
-    return request(app.getHttpServer()).get('/users').expect(404);
+  it('/api (GET)', () => {
+    return request(app.getHttpServer()).get('/api').expect(200);
+  });
+
+  it('/api/users (GET)', () => {
+    return request(app.getHttpServer()).get('/api/users').expect(200);
   });
 });
