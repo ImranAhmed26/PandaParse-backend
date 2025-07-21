@@ -77,7 +77,7 @@ export class AuthService {
     }
   }
 
-  private signToken(userId: string, email: string, role: string, name: string): AuthResponseDto {
+  private signToken(userId: string, email: string, role: number, name: string): AuthResponseDto {
     const payload = { sub: userId, email, role };
 
     return {

@@ -5,7 +5,7 @@ import { UpdateCompanyDto } from './dto/update-company.dto';
 import { ApiBearerAuth, ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
 import { JwtAuthGuard } from 'src/auth/guards/jwt-auth.guard';
 import { RolesGuard } from 'src/auth/guards/roles.guard';
-import { UserRole } from '@prisma/client';
+import { USER_ROLES } from 'src/common/constants/enums';
 import { Roles } from 'src/auth/decorators/roles.decorators';
 import { CompanyUserGuard } from 'src/auth/guards/companyUser.guard';
 import { CurrentUser } from 'src/auth/decorators/current-user.decorators';
@@ -21,7 +21,7 @@ export class CompanyController {
   @ApiResponse({ status: 201, description: 'The record has been created successfully.' })
   @ApiResponse({ status: 400, description: 'Bad request.' })
   @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles(UserRole.ADMIN, UserRole.USER)
+  @Roles(USER_ROLES.ADMIN, USER_ROLES.USER)
   create(@Body() dto: CreateCompanyDto, @CurrentUser() userId: string) {
     return this.companyService.create(dto, userId);
   }
@@ -32,7 +32,7 @@ export class CompanyController {
   @ApiResponse({ status: 400, description: 'Bad request.' })
   @ApiBearerAuth('access-token')
   @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles(UserRole.ADMIN)
+  @Roles(USER_ROLES.ADMIN)
   findAll() {
     return this.companyService.findAll();
   }
@@ -43,7 +43,7 @@ export class CompanyController {
   @ApiResponse({ status: 404, description: 'Company not found.' })
   @ApiBearerAuth()
   @UseGuards(JwtAuthGuard, CompanyUserGuard, RolesGuard)
-  @Roles(UserRole.ADMIN, UserRole.USER)
+  @Roles(USER_ROLES.ADMIN, USER_ROLES.USER)
   findOne(@Param('id') id: string) {
     return this.companyService.findOne(id);
   }
@@ -55,7 +55,7 @@ export class CompanyController {
   @ApiResponse({ status: 404, description: 'Company not found.' })
   @ApiBearerAuth()
   @UseGuards(JwtAuthGuard, CompanyOwnerGuard, RolesGuard)
-  @Roles(UserRole.ADMIN, UserRole.USER)
+  @Roles(USER_ROLES.ADMIN, USER_ROLES.USER)
   update(@Param('id') id: string, @Body() dto: UpdateCompanyDto) {
     return this.companyService.update(id, dto);
   }
@@ -66,7 +66,7 @@ export class CompanyController {
   @ApiResponse({ status: 404, description: 'Company not found.' })
   @ApiBearerAuth()
   @UseGuards(JwtAuthGuard, CompanyOwnerGuard, RolesGuard)
-  @Roles(UserRole.ADMIN)
+  @Roles(USER_ROLES.ADMIN)
   remove(@Param('id') id: string) {
     return this.companyService.remove(id);
   }

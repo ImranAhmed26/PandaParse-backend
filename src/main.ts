@@ -25,7 +25,17 @@ async function bootstrap() {
 
   // ✅ Global API prefix
   const apiPrefix = configService.get<string>('API_PREFIX') || 'api';
-  app.setGlobalPrefix(apiPrefix);
+
+  // Validate API prefix format (no leading or trailing slashes)
+  if (apiPrefix.startsWith('/') || apiPrefix.endsWith('/')) {
+    console.warn('⚠️ API_PREFIX should not contain leading or trailing slashes. Trimming...');
+    const trimmedPrefix = apiPrefix.replace(/^\/+|\/+$/g, '');
+    console.log(`📝 Using API prefix: '${trimmedPrefix}' (was: '${apiPrefix}')`);
+    app.setGlobalPrefix(trimmedPrefix);
+  } else {
+    console.log(`📝 Using API prefix: '${apiPrefix}'`);
+    app.setGlobalPrefix(apiPrefix);
+  }
 
   // ✅ Swagger (only in non-production)
   if (!isProduction) {

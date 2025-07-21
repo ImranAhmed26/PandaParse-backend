@@ -1,5 +1,5 @@
 import { ApiProperty } from '@nestjs/swagger';
-import { UserRole } from '@prisma/client';
+import { USER_ROLES } from 'src/common/constants/enums';
 
 export class UserResponseDto {
   @ApiProperty()
@@ -11,8 +11,11 @@ export class UserResponseDto {
   @ApiProperty()
   name!: string;
 
-  @ApiProperty({ enum: UserRole })
-  role!: UserRole;
+  @ApiProperty({
+    description: 'User role: 0=ADMIN, 1=INTERNAL, 2=USER',
+    enum: Object.values(USER_ROLES),
+  })
+  role!: number;
 
   @ApiProperty()
   createdAt!: Date;

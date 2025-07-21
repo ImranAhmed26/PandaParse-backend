@@ -2,7 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateWorkspaceDto } from './dto/create-workspace.dto';
 import { UpdateWorkspaceDto } from './dto/update-workspace.dto';
-import { OwnerType } from '@prisma/client';
+import { OWNER_TYPES } from 'src/common/constants/enums';
 
 @Injectable()
 export class WorkspaceService {
@@ -13,7 +13,7 @@ export class WorkspaceService {
       data: {
         name: data.name,
         ownerId: userId,
-        ownerType: data.ownerType as OwnerType,
+        ownerType: data.ownerType ?? OWNER_TYPES.USER,
       },
     });
   }
