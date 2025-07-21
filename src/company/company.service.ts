@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateCompanyDto } from './dto/create-company.dto';
 import { UpdateCompanyDto } from './dto/update-company.dto';
@@ -24,15 +24,17 @@ export class CompanyService {
 
   findAll() {
     return this.prisma.company.findMany({
-      include: { users: true },
+      include: { users: true, tokens: true },
     });
   }
 
-  findOne(id: string) {
-    return this.prisma.company.findUnique({
+  async findOne(id: string) {
+    const company = await this.prisma.company.findUnique({
       where: { id },
-      include: { users: true },
+      include: { users: true, tokens: true },
     });
+    if (!company) throw new NotFoundException(`Company with ID ${id} not found`);
+    return company;
   }
 
   update(id: string, data: UpdateCompanyDto) {
