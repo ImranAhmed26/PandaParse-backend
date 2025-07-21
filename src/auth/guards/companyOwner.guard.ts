@@ -1,6 +1,6 @@
 import { CanActivate, ExecutionContext, Injectable, ForbiddenException } from '@nestjs/common';
 import { PrismaService } from 'src/prisma/prisma.service';
-import { UserRole } from '@prisma/client';
+import { USER_ROLES } from 'src/common/constants/enums';
 
 @Injectable()
 export class CompanyOwnerGuard implements CanActivate {
@@ -14,7 +14,7 @@ export class CompanyOwnerGuard implements CanActivate {
     if (!user || !companyId) return false;
 
     // ✅ Admins bypass access check
-    if (user.role === UserRole.ADMIN) return true;
+    if (user.role === USER_ROLES.ADMIN) return true;
 
     const userRecord = await this.prisma.user.findUnique({
       where: { id: user.id },

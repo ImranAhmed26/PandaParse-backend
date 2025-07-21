@@ -12,7 +12,7 @@ model User {
   email     String   @unique
   name      String
   password  String
-  role      UserRole @default(USER)
+  role      Int      @default(2) // 0=ADMIN, 1=INTERNAL, 2=USER
   createdAt DateTime @default(now())
 
   // 🔁 Belongs to a company (if not solo)
@@ -47,7 +47,7 @@ model Workspace {
   id         String              @id @default(uuid())
   name       String
   ownerId    String
-  ownerType OwnerType
+  ownerType Int       // 0=USER, 1=COMPANY
   documents  WorkspaceDocument[]
 
   createdAt DateTime @default(now())
@@ -169,11 +169,7 @@ model TokenTransaction {
   tokenBalanceId String
 }
 
-enum UserRole {
-  ADMIN
-  INTERNAL
-  USER
-}
+// UserRole is now represented as Int: 0=ADMIN, 1=INTERNAL, 2=USER
 
 enum DocumentType {
   INVOICE
@@ -215,7 +211,4 @@ enum TokenTransactionType {
   REFUND
 }
 
-enum OwnerType {
-  USER
-  COMPANY
-}
+// OwnerType is now represented as Int: 0=USER, 1=COMPANY

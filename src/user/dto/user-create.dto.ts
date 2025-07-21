@@ -1,6 +1,6 @@
-import { IsEmail, IsNotEmpty, IsEnum, IsOptional, IsString } from 'class-validator';
-import { UserRole } from '@prisma/client';
+import { IsEmail, IsNotEmpty, IsInt, IsOptional, IsString, Min, Max } from 'class-validator';
 import { ApiProperty } from '@nestjs/swagger';
+import { USER_ROLES } from 'src/common/constants/enums';
 
 export class UserCreateDto {
   @IsEmail()
