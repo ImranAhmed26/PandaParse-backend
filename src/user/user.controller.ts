@@ -10,6 +10,8 @@ import {
   UseGuards,
   Query,
   ParseIntPipe,
+  Logger,
+  ParseUUIDPipe,
 } from '@nestjs/common';
 import { UserService } from './user.service';
 import {
@@ -27,12 +29,15 @@ import { JwtAuthGuard } from 'src/auth/guards/jwt-auth.guard';
 import { RolesGuard } from 'src/auth/guards/roles.guard';
 import { Roles } from 'src/auth/decorators/roles.decorators';
 import { USER_ROLES } from 'src/common/constants/enums';
+import { JwtPayload } from 'src/auth/interfaces/jwt-payload.interfaces';
+import { CurrentUser } from 'src/auth/decorators/current-user.decorators';
 
 @ApiTags('users')
 @Controller('users')
 @UseGuards(JwtAuthGuard)
 @ApiBearerAuth()
 export class UserController {
+  private readonly logger = new Logger(UserController.name);
   constructor(private readonly userService: UserService) {}
 
   @Post()
@@ -89,6 +94,30 @@ export class UserController {
     return this.userService.findAll(page, limit);
   }
 
+  @Get('me')
+  @UseGuards(RolesGuard)
+  @ApiOperation({ summary: 'Get logged-in user profile' })
+  @ApiResponse({
+    status: HttpStatus.OK,
+    description: 'Return the logged-in user.',
+    type: UserResponseDto,
+  })
+  @ApiResponse({
+    status: HttpStatus.NOT_FOUND,
+    description: 'User not found.',
+  })
+  @ApiResponse({
+    status: HttpStatus.FORBIDDEN,
+    description: 'Insufficient permissions.',
+  })
+  @ApiResponse({
+    status: HttpStatus.UNAUTHORIZED,
+    description: 'Not authenticated.',
+  })
+  findMe(@CurrentUser() user: JwtPayload): Promise<UserResponseDto> {
+    return this.userService.findOne(user.sub);
+  }
+
   @Get(':id')
   @UseGuards(RolesGuard)
   @Roles(USER_ROLES.ADMIN, USER_ROLES.INTERNAL)
@@ -106,7 +135,7 @@ export class UserController {
     status: HttpStatus.FORBIDDEN,
     description: 'Insufficient permissions.',
   })
-  findOne(@Param('id') id: string): Promise<UserResponseDto> {
+  findOne(@Param('id', new ParseUUIDPipe()) id: string): Promise<UserResponseDto> {
     return this.userService.findOne(id);
   }
 
