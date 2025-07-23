@@ -21,5 +21,22 @@ export class UserResponseDto {
   createdAt!: Date;
 
   @ApiProperty({ nullable: true })
-  companyId?: string;
+  companyId?: string | null;
+}
+
+export class PaginatedUsersResponseDto {
+  @ApiProperty({ type: [UserResponseDto] })
+  data!: UserResponseDto[];
+
+  @ApiProperty()
+  total!: number;
+
+  @ApiProperty()
+  page!: number;
+
+  @ApiProperty()
+  limit!: number;
+
+  @ApiProperty()
+  totalPages!: number;
 }
