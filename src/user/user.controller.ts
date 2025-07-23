@@ -10,7 +10,6 @@ import {
   UseGuards,
   Query,
   ParseIntPipe,
-  Logger,
   ParseUUIDPipe,
 } from '@nestjs/common';
 import { UserService } from './user.service';
@@ -37,7 +36,6 @@ import { CurrentUser } from 'src/auth/decorators/current-user.decorators';
 @UseGuards(JwtAuthGuard)
 @ApiBearerAuth()
 export class UserController {
-  private readonly logger = new Logger(UserController.name);
   constructor(private readonly userService: UserService) {}
 
   @Post()
