@@ -17,7 +17,7 @@ export class CompanyOwnerGuard implements CanActivate {
     if (user.role === USER_ROLES.ADMIN) return true;
 
     const userRecord = await this.prisma.user.findUnique({
-      where: { id: user.id },
+      where: { id: user.sub },
       select: { companyId: true },
     });
 
