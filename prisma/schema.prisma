@@ -20,7 +20,7 @@ model User {
   company   Company? @relation("CompanyUsers", fields: [companyId], references: [id])
 
   // 🔁 Optional: owns a company
-  ownedCompany Company? @relation("CompanyOwner")
+  ownedCompany      Company?    @relation("CompanyOwner")
   workspacesCreated Workspace[] @relation("WorkspaceCreator")
 
   documents Document[]
@@ -28,6 +28,7 @@ model User {
   tokens    TokenBalance?
   Upload    Upload[]
 
+  WorkspaceMember WorkspaceMember[]
 }
 
 model Company {
@@ -46,19 +47,31 @@ model Company {
 }
 
 model Workspace {
-  id         String              @id @default(uuid())
-  name       String
-  ownerId    String
-  ownerType Int       // 0=USER, 1=COMPANY
-  documents  WorkspaceDocument[]
+  id        String              @id @default(uuid())
+  name      String
+  ownerId   String
+  ownerType Int // 0=USER, 1=COMPANY
+  documents WorkspaceDocument[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  creatorId  String
-  creator    User     @relation("WorkspaceCreator", fields: [creatorId], references: [id])
+  creatorId String
+  creator   User   @relation("WorkspaceCreator", fields: [creatorId], references: [id])
+
+  members WorkspaceMember[]
 
   @@unique([ownerId, name])
+}
+
+model WorkspaceMember {
+  id          String @id @default(uuid())
+  workspaceId String
+  userId      String
+  role        Int // 0=VIEWER, 1=EDITOR, 2=ADMIN (optional granular roles)
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id])
+  user      User      @relation(fields: [userId], references: [id])
 }
 
 model WorkspaceDocument {
