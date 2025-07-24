@@ -1,9 +1,16 @@
-import { ForbiddenException, Injectable, Logger } from '@nestjs/common';
+import {
+  BadRequestException,
+  ForbiddenException,
+  Injectable,
+  InternalServerErrorException,
+  Logger,
+} from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateWorkspaceDto } from './dto/create-workspace.dto';
 import { UpdateWorkspaceDto } from './dto/update-workspace.dto';
 import { OWNER_TYPES, USER_ROLES } from 'src/common/constants/enums';
 import { JwtPayload } from 'src/auth/interfaces/jwt-payload.interfaces';
+import { Prisma } from '@prisma/client';
 
 @Injectable()
 export class WorkspaceService {
@@ -30,6 +37,7 @@ export class WorkspaceService {
     if (!userRecord) {
       throw new ForbiddenException('User not found');
     }
+
     // ✅ Determine ownerType & ownerId
     type OwnerType = (typeof OWNER_TYPES)[keyof typeof OWNER_TYPES];
     let ownerType: OwnerType = OWNER_TYPES.USER;
@@ -40,14 +48,25 @@ export class WorkspaceService {
       ownerId = userRecord.companyId;
     }
 
-    return this.prisma.workspace.create({
-      data: {
-        name: data.name,
-        ownerId,
-        ownerType,
-        creatorId: user.sub, // track who actually created it
-      },
-    });
+    try {
+      return await this.prisma.workspace.create({
+        data: {
+          name: data.name,
+          ownerId,
+          ownerType,
+          creatorId: user.sub, // track who actually created it
+        },
+      });
+    } catch (error) {
+      if (error instanceof Prisma.PrismaClientKnownRequestError) {
+        if (error.code === 'P2002') {
+          throw new BadRequestException(
+            `A workspace with the name "${data.name}" already exists in your records.`,
+          );
+        }
+      }
+      throw new InternalServerErrorException('Something went wrong, please try again later.');
+    }
   }
 
   findAll() {
