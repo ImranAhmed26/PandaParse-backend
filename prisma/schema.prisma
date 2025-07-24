@@ -21,11 +21,13 @@ model User {
 
   // 🔁 Optional: owns a company
   ownedCompany Company? @relation("CompanyOwner")
+  workspacesCreated Workspace[] @relation("WorkspaceCreator")
 
   documents Document[]
   jobs      Job[]
   tokens    TokenBalance?
   Upload    Upload[]
+
 }
 
 model Company {
@@ -52,6 +54,9 @@ model Workspace {
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+
+  creatorId  String
+  creator    User     @relation("WorkspaceCreator", fields: [creatorId], references: [id])
 
   @@unique([ownerId, name])
 }

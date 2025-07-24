@@ -1,4 +1,14 @@
-import { Controller, Get, Post, Body, Param, Delete, Put, UseGuards, Patch } from '@nestjs/common';
+import {
+  Controller,
+  Get,
+  Post,
+  Body,
+  Param,
+  Delete,
+  UseGuards,
+  Patch,
+  Logger,
+} from '@nestjs/common';
 import { WorkspaceService } from './workspace.service';
 import { CreateWorkspaceDto } from './dto/create-workspace.dto';
 import { UpdateWorkspaceDto } from './dto/update-workspace.dto';
@@ -8,12 +18,14 @@ import { RolesGuard } from 'src/auth/guards/roles.guard';
 import { USER_ROLES } from 'src/common/constants/enums';
 import { Roles } from 'src/auth/decorators/roles.decorators';
 import { CurrentUser } from 'src/auth/decorators/current-user.decorators';
-import { CompanyOwnerGuard } from 'src/auth/guards/companyOwner.guard';
 import { CompanyUserGuard } from 'src/auth/guards/companyUser.guard';
+import { JwtPayload } from 'src/auth/interfaces/jwt-payload.interfaces';
+import { WorkspaceCreateGuard } from 'src/auth/guards/workspaceCreate.guard';
 
 @Controller('workspace')
 @ApiTags('workspace')
 export class WorkspaceController {
+  logger = new Logger();
   constructor(private readonly workspaceService: WorkspaceService) {}
 
   @Post()
@@ -21,10 +33,11 @@ export class WorkspaceController {
   @ApiResponse({ status: 201, description: 'The record has been created successfully.' })
   @ApiResponse({ status: 400, description: 'Bad request.' })
   @ApiBearerAuth()
-  @UseGuards(JwtAuthGuard, CompanyOwnerGuard, RolesGuard)
+  @UseGuards(JwtAuthGuard, WorkspaceCreateGuard)
   @Roles(USER_ROLES.ADMIN, USER_ROLES.USER)
-  create(@Body() dto: CreateWorkspaceDto, @CurrentUser() userId: string) {
-    return this.workspaceService.create(dto, userId);
+  create(@Body() dto: CreateWorkspaceDto, @CurrentUser() user: JwtPayload) {
+    this.logger.log('USER ID', user.sub);
+    return this.workspaceService.create(dto, user);
   }
 
   @Get()
