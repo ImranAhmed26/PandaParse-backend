@@ -1,5 +1,5 @@
 import { ApiProperty } from '@nestjs/swagger';
-import { USER_ROLES } from 'src/common/constants/enums';
+import { USER_ROLES, USER_TYPES } from 'src/common/constants/enums';
 
 export class UserDto {
   @ApiProperty()
@@ -16,6 +16,12 @@ export class UserDto {
     enum: Object.values(USER_ROLES),
   })
   role!: number;
+
+  @ApiProperty({
+    description: 'User type: 0=INDIVIDUAL_FREELANCER, 1=COMPANY_USER, 2=COMPANY_OWNER',
+    enum: Object.values(USER_TYPES),
+  })
+  userType!: number;
 }
 
 export class AuthResponseDto {
