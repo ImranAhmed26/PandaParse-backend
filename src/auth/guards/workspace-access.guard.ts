@@ -1,6 +1,12 @@
-import { CanActivate, ExecutionContext, Injectable, ForbiddenException, NotFoundException } from '@nestjs/common';
+import {
+  CanActivate,
+  ExecutionContext,
+  Injectable,
+  ForbiddenException,
+  NotFoundException,
+} from '@nestjs/common';
 import { PrismaService } from 'src/prisma/prisma.service';
-import { USER_ROLES, OWNER_TYPES } from 'src/common/constants/enums';
+import { USER_ROLES } from 'src/common/constants/enums';
 import { AuthenticatedRequest } from 'src/common/types/authenticated-request.types';
 
 @Injectable()
@@ -11,6 +17,7 @@ export class WorkspaceAccessGuard implements CanActivate {
     const request = context.switchToHttp().getRequest<AuthenticatedRequest>();
     const user = request.user;
     const workspaceId = request.params?.id;
+    const method = request.method;
 
     if (!user) {
       throw new ForbiddenException('User not authenticated');
@@ -25,13 +32,21 @@ export class WorkspaceAccessGuard implements CanActivate {
       throw new ForbiddenException('Workspace ID is required');
     }
 
-    // Get the workspace
+    // Get the workspace with creator info
     const workspace = await this.prisma.workspace.findUnique({
       where: { id: workspaceId },
       select: {
         id: true,
-        ownerId: true,
-        ownerType: true,
+        creatorId: true,
+        members: {
+          where: {
+            userId: user.sub,
+          },
+          select: {
+            userId: true,
+            role: true,
+          },
+        },
       },
     });
 
@@ -39,28 +54,21 @@ export class WorkspaceAccessGuard implements CanActivate {
       throw new NotFoundException('Workspace not found');
     }
 
-    // Get user details
-    const userRecord = await this.prisma.user.findUnique({
-      where: { id: user.sub },
-      select: {
-        id: true,
-        companyId: true,
-      },
-    });
-
-    if (!userRecord) {
-      throw new ForbiddenException('User not found');
+    // Check if user is a member of the workspace
+    const membership = workspace.members.find(member => member.userId === user.sub);
+    if (!membership) {
+      throw new ForbiddenException('You are not a member of this workspace');
     }
 
-    // Check access based on owner type
-    if (workspace.ownerType === OWNER_TYPES.USER) {
-      // User-owned workspace: only the owner can access
-      return workspace.ownerId === user.sub;
-    } else if (workspace.ownerType === OWNER_TYPES.COMPANY) {
-      // Company-owned workspace: any user in the company can access
-      return userRecord.companyId === workspace.ownerId;
+    // For edit/delete operations (PATCH, PUT, DELETE), only the creator can perform these actions
+    const isModifyingOperation = ['PATCH', 'PUT', 'DELETE'].includes(method);
+    if (isModifyingOperation) {
+      if (workspace.creatorId !== user.sub) {
+        throw new ForbiddenException('Only workspace creator can perform this action');
+      }
     }
 
-    return false;
+    // For read operations (GET), any member can access
+    return true;
   }
 }
