@@ -17,6 +17,10 @@ import { UpdateWorkspaceDto } from './dto/update-workspace.dto';
 import { WorkspaceResponseDto, PaginatedWorkspacesResponseDto } from './dto/workspace-response.dto';
 import { ManageMembersDto } from './dto/manage-members.dto';
 import { WorkspaceMemberDto } from './dto/workspace-member.dto';
+import {
+  CheckNameAvailabilityDto,
+  NameAvailabilityResponseDto,
+} from './dto/check-name-availability.dto';
 import { ApiBearerAuth, ApiOperation, ApiResponse, ApiTags, ApiQuery } from '@nestjs/swagger';
 import { JwtAuthGuard } from 'src/auth/guards/jwt-auth.guard';
 import { RolesGuard } from 'src/auth/guards/roles.guard';
@@ -131,9 +135,9 @@ export class WorkspaceController {
   @Patch(':id')
   @UseGuards(WorkspaceAccessGuard, RolesGuard)
   @Roles(USER_ROLES.ADMIN, USER_ROLES.USER)
-  @ApiOperation({ 
+  @ApiOperation({
     summary: 'Update a workspace by id (creator only)',
-    description: 'Only the workspace creator or admin can update workspace details.'
+    description: 'Only the workspace creator or admin can update workspace details.',
   })
   @ApiResponse({
     status: 200,
@@ -150,9 +154,10 @@ export class WorkspaceController {
   @Delete(':id')
   @UseGuards(WorkspaceAccessGuard, RolesGuard)
   @Roles(USER_ROLES.ADMIN, USER_ROLES.USER)
-  @ApiOperation({ 
+  @ApiOperation({
     summary: 'Delete a workspace by id (creator only)',
-    description: 'Only the workspace creator or admin can delete a workspace. All members are automatically removed.'
+    description:
+      'Only the workspace creator or admin can delete a workspace. All members are automatically removed.',
   })
   @ApiResponse({
     status: 200,
@@ -168,6 +173,28 @@ export class WorkspaceController {
   @ApiResponse({ status: 403, description: 'Access denied to this workspace.' })
   remove(@Param('id') id: string): Promise<{ message: string }> {
     return this.workspaceService.remove(id);
+  }
+
+  @Post('check-name-availability')
+  @UseGuards(RolesGuard)
+  @Roles(USER_ROLES.ADMIN, USER_ROLES.USER)
+  @ApiOperation({ summary: 'Check if a workspace name is available for the current user' })
+  @ApiResponse({
+    status: 200,
+    description: 'Returns whether the workspace name is available.',
+    type: NameAvailabilityResponseDto,
+  })
+  @ApiResponse({ status: 400, description: 'Invalid workspace name.' })
+  @ApiResponse({ status: 403, description: 'Insufficient permissions.' })
+  async checkNameAvailability(
+    @Body() dto: CheckNameAvailabilityDto,
+    @CurrentUser() user: JwtPayload,
+  ): Promise<NameAvailabilityResponseDto> {
+    const result = await this.workspaceService.checkNameAvailability(user.sub, dto.name);
+    return {
+      available: result.available,
+      name: dto.name,
+    };
   }
 
   // Member management endpoints

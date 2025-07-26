@@ -44,6 +44,20 @@ export class WorkspaceService {
         throw new ForbiddenException('User not found');
       }
 
+      // Check if workspace name already exists for this creator (application-level check)
+      const existingWorkspace = await this.prisma.workspace.findFirst({
+        where: {
+          creatorId: user.sub,
+          name: data.name,
+        },
+      });
+
+      if (existingWorkspace) {
+        throw new BadRequestException(
+          `You already have a workspace named "${data.name}". Please choose a different name.`,
+        );
+      }
+
       // Determine ownerType & ownerId
       type OwnerType = (typeof OWNER_TYPES)[keyof typeof OWNER_TYPES];
       let ownerType: OwnerType = OWNER_TYPES.USER;
@@ -123,7 +137,7 @@ export class WorkspaceService {
       const memberCount = await this.membershipService.getWorkspaceMemberCount(result.id);
 
       this.logger.log(
-        `Workspace ${result.id} created by user ${user.sub} with ${memberCount} members`,
+        `Workspace "${result.name}" (${result.id}) created by user ${user.sub} with ${memberCount} members`,
       );
 
       return {
@@ -138,7 +152,7 @@ export class WorkspaceService {
       const errorCode = getPrismaErrorCode(error);
       if (errorCode === 'P2002') {
         throw new BadRequestException(
-          `A workspace with the name "${data.name}" already exists in your records.`,
+          `You already have a workspace named "${data.name}". Please choose a different name.`,
         );
       }
 
@@ -395,9 +409,34 @@ export class WorkspaceService {
   async update(id: string, data: UpdateWorkspaceDto): Promise<WorkspaceResponseDto> {
     try {
       // Check if workspace exists
-      const existingWorkspace = await this.prisma.workspace.findUnique({ where: { id } });
+      const existingWorkspace = await this.prisma.workspace.findUnique({
+        where: { id },
+        select: {
+          id: true,
+          name: true,
+          creatorId: true,
+        },
+      });
+
       if (!existingWorkspace) {
         throw new NotFoundException(`Workspace with ID ${id} not found`);
+      }
+
+      // If name is being updated, check for uniqueness per creator
+      if (data.name && data.name !== existingWorkspace.name) {
+        const duplicateWorkspace = await this.prisma.workspace.findFirst({
+          where: {
+            creatorId: existingWorkspace.creatorId,
+            name: data.name,
+            id: { not: id }, // Exclude current workspace
+          },
+        });
+
+        if (duplicateWorkspace) {
+          throw new BadRequestException(
+            `You already have a workspace named "${data.name}". Please choose a different name.`,
+          );
+        }
       }
 
       const updatedWorkspace = await this.prisma.workspace.update({
@@ -432,13 +471,20 @@ export class WorkspaceService {
         memberCount: updatedWorkspace._count.members,
       };
     } catch (error: unknown) {
-      if (error instanceof NotFoundException) {
+      if (error instanceof NotFoundException || error instanceof BadRequestException) {
         throw error;
       }
 
       const errorCode = getPrismaErrorCode(error);
       if (errorCode === 'P2025') {
         throw new NotFoundException(`Workspace with ID ${id} not found`);
+      }
+
+      if (errorCode === 'P2002') {
+        // Handle database-level unique constraint violation
+        throw new BadRequestException(
+          `You already have a workspace with this name. Please choose a different name.`,
+        );
       }
 
       this.logger.error(
@@ -500,6 +546,31 @@ export class WorkspaceService {
         getErrorStack(error),
       );
       throw new InternalServerErrorException('Failed to delete workspace');
+    }
+  }
+
+  // Helper method to check if a workspace name is available for a creator
+  async checkNameAvailability(
+    creatorId: string,
+    name: string,
+    excludeId?: string,
+  ): Promise<{ available: boolean }> {
+    try {
+      const existingWorkspace = await this.prisma.workspace.findFirst({
+        where: {
+          creatorId,
+          name,
+          ...(excludeId && { id: { not: excludeId } }),
+        },
+      });
+
+      return { available: !existingWorkspace };
+    } catch (error: unknown) {
+      this.logger.error(
+        `Failed to check workspace name availability: ${getErrorMessage(error)}`,
+        getErrorStack(error),
+      );
+      throw new InternalServerErrorException('Failed to check name availability');
     }
   }
 }

@@ -61,7 +61,7 @@ model Workspace {
 
   members WorkspaceMember[]
 
-  @@unique([ownerId, name])
+  @@unique([creatorId, name])
 }
 
 model WorkspaceMember {
