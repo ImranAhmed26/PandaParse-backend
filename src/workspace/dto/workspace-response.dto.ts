@@ -1,4 +1,5 @@
-import { ApiProperty } from '@nestjs/swagger';
+import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import { WorkspaceMemberDto } from './workspace-member.dto';
 
 export class WorkspaceResponseDto {
   @ApiProperty()
@@ -10,9 +11,9 @@ export class WorkspaceResponseDto {
   @ApiProperty()
   ownerId!: string;
 
-  @ApiProperty({ 
+  @ApiProperty({
     description: 'Owner type: 0=USER, 1=COMPANY',
-    enum: [0, 1]
+    enum: [0, 1],
   })
   ownerType!: number;
 
@@ -24,6 +25,18 @@ export class WorkspaceResponseDto {
 
   @ApiProperty()
   updatedAt!: Date;
+
+  @ApiPropertyOptional({
+    description: 'Number of members in this workspace',
+    example: 5,
+  })
+  memberCount?: number;
+
+  @ApiPropertyOptional({
+    description: 'List of workspace members (included when specifically requested)',
+    type: [WorkspaceMemberDto],
+  })
+  members?: WorkspaceMemberDto[];
 }
 
 export class PaginatedWorkspacesResponseDto {
