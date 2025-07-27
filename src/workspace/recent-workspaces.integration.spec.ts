@@ -7,6 +7,7 @@ import { JwtPayload } from 'src/auth/interfaces/jwt-payload.interfaces';
 describe('Recent Workspaces Integration', () => {
   let service: WorkspaceService;
   let prisma: PrismaService;
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   let membershipService: MembershipService;
 
   const mockUser: JwtPayload = {
@@ -115,6 +116,7 @@ describe('Recent Workspaces Integration', () => {
       expect(result[3].id).toBe('workspace-3'); // Oldest creation date
 
       // Verify the query was called with correct parameters
+      // eslint-disable-next-line @typescript-eslint/unbound-method
       expect(prisma.workspace.findMany).toHaveBeenCalledWith({
         where: {
           members: {

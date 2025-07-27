@@ -622,7 +622,8 @@ export class WorkspaceService {
           return a.id.localeCompare(b.id);
         })
         .slice(0, 6) // Limit to 6 workspaces
-        .map(({ activityTimestamp: _activityTimestamp, ...workspace }) => workspace); // Remove temporary field
+        // eslint-disable-next-line @typescript-eslint/no-unused-vars
+        .map(({ activityTimestamp, ...workspace }) => workspace); // Remove temporary field
 
       const executionTime = Date.now() - startTime;
       this.logger.log(

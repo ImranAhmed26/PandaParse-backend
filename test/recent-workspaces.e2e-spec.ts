@@ -5,11 +5,12 @@ import { AppModule } from '../src/app.module';
 import { PrismaService } from '../src/prisma/prisma.service';
 
 describe('Recent Workspaces (e2e)', () => {
+  /* eslint-disable @typescript-eslint/no-unsafe-argument */
   let app: INestApplication;
   let prisma: PrismaService;
   let authToken: string;
   let testUserId: string;
-  let testWorkspaceIds: string[] = [];
+  const testWorkspaceIds: string[] = [];
 
   beforeAll(async () => {
     const moduleFixture: TestingModule = await Test.createTestingModule({
@@ -25,7 +26,7 @@ describe('Recent Workspaces (e2e)', () => {
       data: {
         email: 'test-recent-workspaces@example.com',
         name: 'Test User',
-        password: 'hashedpassword',
+        password: 'hashed-password',
         role: 2, // USER role
       },
     });
@@ -61,7 +62,8 @@ describe('Recent Workspaces (e2e)', () => {
       // This test would require proper JWT authentication setup
       // For now, we'll create a basic structure test
 
-      const response = await request(app.getHttpServer())
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-argument
+      await request(app.getHttpServer())
         .get('/workspace/recent')
         .set('Authorization', `Bearer ${authToken}`)
         .expect(401); // Expect 401 since we don't have proper auth setup
@@ -133,7 +135,7 @@ describe('Recent Workspaces (e2e)', () => {
       });
 
       // This test would require proper JWT authentication setup
-      const response = await request(app.getHttpServer())
+      await request(app.getHttpServer())
         .get('/workspace/recent')
         .set('Authorization', `Bearer ${authToken}`)
         .expect(401); // Expect 401 since we don't have proper auth setup
@@ -154,7 +156,7 @@ describe('Recent Workspaces (e2e)', () => {
 
     it('should limit results to 6 workspaces', async () => {
       // Create 8 test workspaces
-      const workspacePromises = Array.from({ length: 8 }, (_, i) =>
+      const workspacePromises = Array.from({ length: 8 }, async (_, i) =>
         prisma.workspace.create({
           data: {
             name: `Test Workspace ${i + 1}`,
@@ -179,7 +181,7 @@ describe('Recent Workspaces (e2e)', () => {
       });
 
       // This test would require proper JWT authentication setup
-      const response = await request(app.getHttpServer())
+      await request(app.getHttpServer())
         .get('/workspace/recent')
         .set('Authorization', `Bearer ${authToken}`)
         .expect(401); // Expect 401 since we don't have proper auth setup
@@ -225,7 +227,7 @@ describe('Recent Workspaces (e2e)', () => {
       expect(true).toBe(true); // Placeholder assertion
     });
 
-    it('should handle workspace membership changes', async () => {
+    it('should handle workspace membership changes', () => {
       // This test would verify that when a user is removed from a workspace,
       // it no longer appears in their recent workspaces list
 
@@ -237,4 +239,5 @@ describe('Recent Workspaces (e2e)', () => {
       expect(true).toBe(true); // Placeholder assertion
     });
   });
+  /* eslint-enable @typescript-eslint/no-unsafe-argument */
 });
