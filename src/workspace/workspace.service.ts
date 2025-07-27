@@ -549,6 +549,103 @@ export class WorkspaceService {
     }
   }
 
+  // Get the 6 most recent workspaces for a user based on document upload activity
+  async getRecentWorkspaces(user: JwtPayload): Promise<WorkspaceResponseDto[]> {
+    try {
+      const startTime = Date.now();
+
+      // Get workspaces where user is a member, with most recent document activity
+      const workspaces = await this.prisma.workspace.findMany({
+        where: {
+          members: {
+            some: {
+              userId: user.sub,
+            },
+          },
+        },
+        select: {
+          id: true,
+          name: true,
+          ownerId: true,
+          ownerType: true,
+          creatorId: true,
+          createdAt: true,
+          updatedAt: true,
+          _count: {
+            select: {
+              members: true,
+            },
+          },
+          documents: {
+            select: {
+              document: {
+                select: {
+                  createdAt: true,
+                },
+              },
+            },
+            orderBy: {
+              document: {
+                createdAt: 'desc',
+              },
+            },
+            take: 1, // Get only the most recent document per workspace
+          },
+        },
+      });
+
+      // Transform and sort workspaces by activity
+      const workspacesWithActivity = workspaces.map(workspace => {
+        const lastDocumentActivity = workspace.documents[0]?.document?.createdAt;
+        const activityTimestamp = lastDocumentActivity || workspace.createdAt;
+
+        return {
+          id: workspace.id,
+          name: workspace.name,
+          ownerId: workspace.ownerId,
+          ownerType: workspace.ownerType,
+          creatorId: workspace.creatorId,
+          createdAt: workspace.createdAt,
+          updatedAt: workspace.updatedAt,
+          memberCount: workspace._count.members,
+          activityTimestamp,
+        };
+      });
+
+      // Sort by activity timestamp (most recent first), then by workspace ID for consistency
+      const sortedWorkspaces = workspacesWithActivity
+        .sort((a, b) => {
+          const timeDiff =
+            new Date(b.activityTimestamp).getTime() - new Date(a.activityTimestamp).getTime();
+          if (timeDiff !== 0) return timeDiff;
+          // Use workspace ID as tiebreaker for consistent ordering
+          return a.id.localeCompare(b.id);
+        })
+        .slice(0, 6) // Limit to 6 workspaces
+        .map(({ activityTimestamp: _activityTimestamp, ...workspace }) => workspace); // Remove temporary field
+
+      const executionTime = Date.now() - startTime;
+      this.logger.log(
+        `Retrieved ${sortedWorkspaces.length} recent workspaces for user ${user.sub} in ${executionTime}ms`,
+      );
+
+      // Log performance warning if query takes too long
+      if (executionTime > 500) {
+        this.logger.warn(
+          `Recent workspaces query for user ${user.sub} took ${executionTime}ms, exceeding 500ms threshold`,
+        );
+      }
+
+      return sortedWorkspaces;
+    } catch (error: unknown) {
+      this.logger.error(
+        `Failed to fetch recent workspaces for user ${user.sub}: ${getErrorMessage(error)}`,
+        getErrorStack(error),
+      );
+      throw new InternalServerErrorException('Failed to fetch recent workspaces');
+    }
+  }
+
   // Helper method to check if a workspace name is available for a creator
   async checkNameAvailability(
     creatorId: string,
