@@ -108,6 +108,25 @@ export class WorkspaceController {
     }
   }
 
+  @Get('recent')
+  @UseGuards(RolesGuard)
+  @Roles(USER_ROLES.ADMIN, USER_ROLES.USER)
+  @ApiOperation({
+    summary: 'Get the 6 most recent workspaces for the current user',
+    description:
+      'Returns workspaces ordered by most recent document upload activity. If no documents exist, orders by workspace creation date.',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Return the 6 most recent workspaces.',
+    type: [WorkspaceResponseDto],
+  })
+  @ApiResponse({ status: 403, description: 'Insufficient permissions.' })
+  @ApiResponse({ status: 500, description: 'Internal server error.' })
+  getRecentWorkspaces(@CurrentUser() user: JwtPayload): Promise<WorkspaceResponseDto[]> {
+    return this.workspaceService.getRecentWorkspaces(user);
+  }
+
   @Get(':id')
   @UseGuards(WorkspaceAccessGuard, RolesGuard)
   @Roles(USER_ROLES.ADMIN, USER_ROLES.USER)
