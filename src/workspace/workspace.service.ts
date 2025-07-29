@@ -23,16 +23,6 @@ export class WorkspaceService {
   ) {}
   private logger = new Logger(WorkspaceService.name);
 
-  // create(data: CreateWorkspaceDto, userId: string) {
-  //   return this.prisma.workspace.create({
-  //     data: {
-  //       name: data.name,
-  //       ownerId: userId,
-  //       ownerType: data.ownerType ?? OWNER_TYPES.USER,
-  //     },
-  //   });
-  // }
-
   async create(data: CreateWorkspaceDto, user: JwtPayload): Promise<WorkspaceResponseDto> {
     try {
       const userRecord = await this.prisma.user.findUnique({
