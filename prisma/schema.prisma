@@ -60,6 +60,7 @@ model Workspace {
   creator   User   @relation("WorkspaceCreator", fields: [creatorId], references: [id])
 
   members WorkspaceMember[]
+  uploads Upload[] // Add relation to uploads
 
   @@unique([creatorId, name])
 }
@@ -116,6 +117,7 @@ model Upload {
   key        String       @unique
   fileName   String
   fileType   String
+  fileSize   Int?         // Add file size tracking in bytes
   status     UploadStatus @default(uploaded)
   uploadedAt DateTime     @default(now())
 
@@ -123,6 +125,10 @@ model Upload {
   userId   String
   job      Job?
   document Document?
+  
+  // Add workspace association for organization
+  workspaceId String?
+  workspace   Workspace? @relation(fields: [workspaceId], references: [id])
 }
 
 model Job {
