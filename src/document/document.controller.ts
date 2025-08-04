@@ -3,6 +3,7 @@ import { DocumentService, CreateDocumentDto, DocumentResponseDto } from './docum
 import { ApiBearerAuth, ApiOperation, ApiResponse, ApiTags, ApiParam } from '@nestjs/swagger';
 import { JwtAuthGuard } from 'src/auth/guards/jwt-auth.guard';
 import { RolesGuard } from 'src/auth/guards/roles.guard';
+import { InternalApiGuard } from 'src/auth/guards/internal-api.guard';
 import { USER_ROLES } from 'src/common/constants/enums';
 import { Roles } from 'src/auth/decorators/roles.decorators';
 import { CurrentUser } from 'src/auth/decorators/current-user.decorators';
@@ -115,5 +116,43 @@ export class DocumentController {
     @CurrentUser() user: JwtPayload,
   ): Promise<DocumentResponseDto> {
     return this.documentService.updateDocumentStatus(id, status, user);
+  }
+
+  // Internal API endpoints
+  @Post('internal')
+  @UseGuards(InternalApiGuard)
+  @ApiOperation({ summary: 'Create document record for internal operations' })
+  @ApiResponse({
+    status: 201,
+    description: 'Document created successfully for internal use',
+  })
+  @ApiResponse({ status: 401, description: 'Invalid internal API key' })
+  createInternal(
+    @Body() dto: CreateDocumentDto & { userId: string },
+  ): Promise<DocumentResponseDto> {
+    // Create a mock user payload for internal operations
+    const internalUser: JwtPayload = {
+      sub: dto.userId,
+      email: 'internal@system.com',
+      role: 0, // Admin role for internal operations
+    };
+
+    return this.documentService.createDocument(dto, internalUser);
+  }
+
+  @Patch('internal/:id/status')
+  @UseGuards(InternalApiGuard)
+  @ApiOperation({ summary: 'Update document status for internal operations' })
+  @ApiResponse({
+    status: 200,
+    description: 'Document status updated successfully for internal use',
+  })
+  @ApiResponse({ status: 401, description: 'Invalid internal API key' })
+  updateInternalStatus(
+    @Param('id') id: string,
+    @Body('status') status: DocumentStatus,
+  ): Promise<DocumentResponseDto> {
+    // Internal operations don't need user validation
+    return this.documentService.updateDocumentStatus(id, status);
   }
 }

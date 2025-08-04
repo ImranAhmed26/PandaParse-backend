@@ -11,6 +11,7 @@ import {
 } from '@nestjs/swagger';
 import { JwtAuthGuard } from 'src/auth/guards/jwt-auth.guard';
 import { RolesGuard } from 'src/auth/guards/roles.guard';
+import { InternalApiGuard } from 'src/auth/guards/internal-api.guard';
 import { USER_ROLES } from 'src/common/constants/enums';
 import { Roles } from 'src/auth/decorators/roles.decorators';
 import { CurrentUser } from 'src/auth/decorators/current-user.decorators';
@@ -187,5 +188,50 @@ export class UploadController {
     @CurrentUser() user: JwtPayload,
   ) {
     return this.uploadRecordService.updateUploadStatus(id, dto.status, user);
+  }
+
+  // Internal API endpoints for AWS operations
+  @Post('internal/generate-url')
+  @UseGuards(InternalApiGuard)
+  @ApiOperation({ summary: 'Generate presigned URL for internal AWS operations' })
+  @ApiResponse({
+    status: 201,
+    description: 'Presigned URL generated successfully for internal use',
+  })
+  @ApiResponse({ status: 401, description: 'Invalid internal API key' })
+  async generateInternalPresignedUrl(@Body() dto: GeneratePresignedUrlDto & { userId: string }) {
+    return this.s3UploadUrlService.generatePresignedUrl(dto, dto.userId);
+  }
+
+  @Post('internal/records')
+  @UseGuards(InternalApiGuard)
+  @ApiOperation({ summary: 'Create upload record for internal operations' })
+  @ApiResponse({
+    status: 201,
+    description: 'Upload record created successfully for internal use',
+  })
+  @ApiResponse({ status: 401, description: 'Invalid internal API key' })
+  async createInternalUploadRecord(@Body() dto: CreateUploadRecordDto & { userId: string }) {
+    // Create a mock user payload for internal operations
+    const internalUser: JwtPayload = {
+      sub: dto.userId,
+      email: 'internal@system.com',
+      role: 0, // Admin role for internal operations
+    };
+
+    return this.uploadRecordService.createUploadRecord(dto, internalUser);
+  }
+
+  @Patch('internal/records/:id/status')
+  @UseGuards(InternalApiGuard)
+  @ApiOperation({ summary: 'Update upload status for internal operations' })
+  @ApiResponse({
+    status: 200,
+    description: 'Upload status updated successfully for internal use',
+  })
+  @ApiResponse({ status: 401, description: 'Invalid internal API key' })
+  async updateInternalUploadStatus(@Param('id') id: string, @Body() dto: UpdateUploadStatusDto) {
+    // Internal operations don't need user validation
+    return this.uploadRecordService.updateUploadStatus(id, dto.status);
   }
 }
