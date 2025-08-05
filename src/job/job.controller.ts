@@ -3,6 +3,7 @@ import { JobService, CreateJobDto, JobResponseDto } from './job.service';
 import { ApiBearerAuth, ApiOperation, ApiResponse, ApiTags, ApiParam } from '@nestjs/swagger';
 import { JwtAuthGuard } from 'src/auth/guards/jwt-auth.guard';
 import { RolesGuard } from 'src/auth/guards/roles.guard';
+import { InternalApiGuard } from 'src/auth/guards/internal-api.guard';
 import { USER_ROLES } from 'src/common/constants/enums';
 import { Roles } from 'src/auth/decorators/roles.decorators';
 import { CurrentUser } from 'src/auth/decorators/current-user.decorators';
@@ -130,5 +131,41 @@ export class JobController {
       body.errorCode,
       user,
     );
+  }
+
+  // Internal API endpoints
+  @Post('internal')
+  @UseGuards(InternalApiGuard)
+  @ApiOperation({ summary: 'Create job for internal operations' })
+  @ApiResponse({
+    status: 201,
+    description: 'Job created successfully for internal use',
+  })
+  @ApiResponse({ status: 401, description: 'Invalid internal API key' })
+  createInternal(@Body() dto: CreateJobDto & { userId: string }): Promise<JobResponseDto> {
+    // Create a mock user payload for internal operations
+    const internalUser: JwtPayload = {
+      sub: dto.userId,
+      email: 'internal@system.com',
+      role: 0, // Admin role for internal operations
+    };
+
+    return this.jobService.createJob(dto, internalUser);
+  }
+
+  @Patch('internal/:id/status')
+  @UseGuards(InternalApiGuard)
+  @ApiOperation({ summary: 'Update job status for internal operations' })
+  @ApiResponse({
+    status: 200,
+    description: 'Job status updated successfully for internal use',
+  })
+  @ApiResponse({ status: 401, description: 'Invalid internal API key' })
+  updateInternalJobStatus(
+    @Param('id') id: string,
+    @Body() body: { status: JobStatus; errorMessage?: string; errorCode?: string },
+  ): Promise<JobResponseDto> {
+    // Internal operations don't need user validation
+    return this.jobService.updateJobStatus(id, body.status, body.errorMessage, body.errorCode);
   }
 }
