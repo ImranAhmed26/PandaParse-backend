@@ -279,7 +279,7 @@ export class DocumentService {
       }
 
       // Remove workspace info from response
-      const { workspace, ...documentResponse } = document;
+      const { workspace: _, ...documentResponse } = document;
       return documentResponse;
     } catch (error: unknown) {
       if (error instanceof NotFoundException || error instanceof ForbiddenException) {
@@ -291,6 +291,174 @@ export class DocumentService {
         getErrorStack(error),
       );
       throw new InternalServerErrorException('Failed to fetch document');
+    }
+  }
+
+  async bulkDeleteDocuments(documentIds: string[], user: JwtPayload) {
+    const results = {
+      successful: [] as string[],
+      failed: [] as { id: string; error: string }[],
+      totalRequested: documentIds.length,
+      totalSuccessful: 0,
+      totalFailed: 0,
+    };
+
+    // Validate input
+    if (!documentIds || documentIds.length === 0) {
+      throw new BadRequestException('No document IDs provided');
+    }
+
+    if (documentIds.length > 100) {
+      throw new BadRequestException('Cannot delete more than 100 documents at once');
+    }
+
+    // Process each document deletion
+    for (const documentId of documentIds) {
+      try {
+        await this.deleteDocument(documentId, user);
+        results.successful.push(documentId);
+        results.totalSuccessful++;
+      } catch (error) {
+        const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+        results.failed.push({
+          id: documentId,
+          error: errorMessage,
+        });
+        results.totalFailed++;
+
+        // Log the error but continue with other deletions
+        this.logger.warn(`Failed to delete document ${documentId}: ${errorMessage}`);
+      }
+    }
+
+    this.logger.log(
+      `Bulk delete completed for user ${user.sub}: ${results.totalSuccessful} successful, ${results.totalFailed} failed`,
+    );
+
+    return results;
+  }
+
+  async deleteWorkspaceDocuments(workspaceId: string, user: JwtPayload): Promise<number> {
+    try {
+      // Verify workspace access first
+      await this.validateWorkspaceAccess(workspaceId, user);
+
+      // Get all documents in the workspace
+      const documents = await this.prisma.document.findMany({
+        where: {
+          workspace: {
+            some: {
+              workspaceId: workspaceId,
+            },
+          },
+        },
+        select: {
+          id: true,
+        },
+      });
+
+      if (documents.length === 0) {
+        return 0;
+      }
+
+      const documentIds = documents.map(doc => doc.id);
+
+      // Delete workspace associations first
+      await this.prisma.workspaceDocument.deleteMany({
+        where: {
+          workspaceId: workspaceId,
+        },
+      });
+
+      // Delete all documents
+      const deleteResult = await this.prisma.document.deleteMany({
+        where: {
+          id: {
+            in: documentIds,
+          },
+        },
+      });
+
+      this.logger.log(`Deleted ${deleteResult.count} documents from workspace ${workspaceId} by user ${user.sub}`);
+      return deleteResult.count;
+    } catch (error: unknown) {
+      if (error instanceof ForbiddenException || error instanceof NotFoundException) {
+        throw error;
+      }
+
+      this.logger.error(`Failed to delete workspace documents: ${getErrorMessage(error)}`, getErrorStack(error));
+      throw new InternalServerErrorException('Failed to delete workspace documents');
+    }
+  }
+
+  async deleteDocument(documentId: string, user: JwtPayload): Promise<void> {
+    try {
+      // First, get the document to check permissions
+      const document = await this.prisma.document.findUnique({
+        where: { id: documentId },
+        select: {
+          id: true,
+          userId: true,
+          workspace: {
+            select: {
+              workspaceId: true,
+            },
+          },
+        },
+      });
+
+      if (!document) {
+        throw new NotFoundException(`Document with ID ${documentId} not found`);
+      }
+
+      // Check if user has access (owns document, admin, or has workspace access)
+      if (document.userId !== user.sub && user.role !== 0) {
+        // Check workspace access if document is in workspaces
+        if (document.workspace.length > 0) {
+          let hasWorkspaceAccess = false;
+          for (const ws of document.workspace) {
+            try {
+              await this.validateWorkspaceAccess(ws.workspaceId, user);
+              hasWorkspaceAccess = true;
+              break;
+            } catch {
+              // Continue checking other workspaces
+            }
+          }
+          if (!hasWorkspaceAccess) {
+            throw new ForbiddenException('Access denied to this document');
+          }
+        } else {
+          throw new ForbiddenException('Access denied to this document');
+        }
+      }
+
+      // Delete workspace associations first (due to foreign key constraints)
+      await this.prisma.workspaceDocument.deleteMany({
+        where: { documentId },
+      });
+
+      // Delete the document
+      await this.prisma.document.delete({
+        where: { id: documentId },
+      });
+
+      this.logger.log(`Document ${documentId} deleted by user ${user.sub}`);
+    } catch (error: unknown) {
+      if (error instanceof NotFoundException || error instanceof ForbiddenException) {
+        throw error;
+      }
+
+      const errorCode = getPrismaErrorCode(error);
+      if (errorCode === 'P2025') {
+        throw new NotFoundException(`Document with ID ${documentId} not found`);
+      }
+
+      this.logger.error(
+        `Failed to delete document: ${getErrorMessage(error)}`,
+        getErrorStack(error),
+      );
+      throw new InternalServerErrorException('Failed to delete document');
     }
   }
 
