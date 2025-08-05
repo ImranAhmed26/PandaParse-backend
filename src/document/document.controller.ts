@@ -148,31 +148,6 @@ export class DocumentController {
     return this.documentService.updateDocumentStatus(id, status, user);
   }
 
-  @Delete(':id')
-  @UseGuards(RolesGuard)
-  @Roles(USER_ROLES.ADMIN, USER_ROLES.USER)
-  @ApiOperation({ summary: 'Delete document by ID' })
-  @ApiParam({ name: 'id', description: 'Document ID' })
-  @ApiResponse({
-    status: 200,
-    description: 'Document deleted successfully.',
-    schema: {
-      type: 'object',
-      properties: {
-        message: { type: 'string' },
-      },
-    },
-  })
-  @ApiResponse({ status: 403, description: 'Access denied to document.' })
-  @ApiResponse({ status: 404, description: 'Document not found.' })
-  async deleteDocument(
-    @Param('id') id: string,
-    @CurrentUser() user: JwtPayload,
-  ): Promise<{ message: string }> {
-    await this.documentService.deleteDocument(id, user);
-    return { message: 'Document deleted successfully' };
-  }
-
   @Delete('bulk')
   @UseGuards(RolesGuard)
   @Roles(USER_ROLES.ADMIN, USER_ROLES.USER)
@@ -208,6 +183,31 @@ export class DocumentController {
   @ApiResponse({ status: 400, description: 'Bad request.' })
   async bulkDeleteDocuments(@Body() dto: BulkDeleteDocumentsDto, @CurrentUser() user: JwtPayload) {
     return this.documentService.bulkDeleteDocuments(dto.documentIds, user);
+  }
+
+  @Delete(':id')
+  @UseGuards(RolesGuard)
+  @Roles(USER_ROLES.ADMIN, USER_ROLES.USER)
+  @ApiOperation({ summary: 'Delete document by ID' })
+  @ApiParam({ name: 'id', description: 'Document ID' })
+  @ApiResponse({
+    status: 200,
+    description: 'Document deleted successfully.',
+    schema: {
+      type: 'object',
+      properties: {
+        message: { type: 'string' },
+      },
+    },
+  })
+  @ApiResponse({ status: 403, description: 'Access denied to document.' })
+  @ApiResponse({ status: 404, description: 'Document not found.' })
+  async deleteDocument(
+    @Param('id') id: string,
+    @CurrentUser() user: JwtPayload,
+  ): Promise<{ message: string }> {
+    await this.documentService.deleteDocument(id, user);
+    return { message: 'Document deleted successfully' };
   }
 
   // Internal API endpoints
