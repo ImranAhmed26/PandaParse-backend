@@ -11,6 +11,7 @@ import { getErrorMessage, getErrorStack, getPrismaErrorCode } from 'src/common/t
 import { JwtPayload } from 'src/auth/interfaces/jwt-payload.interfaces';
 import { DocumentType, DocumentStatus } from '@prisma/client';
 import { OWNER_TYPES } from 'src/common/constants/enums';
+import { DocumentDeletionPreviewDto } from './dto/document-deletion-preview.dto';
 
 export interface CreateDocumentDto {
   uploadId: string;
@@ -379,29 +380,55 @@ export class DocumentService {
         },
       });
 
-      this.logger.log(`Deleted ${deleteResult.count} documents from workspace ${workspaceId} by user ${user.sub}`);
+      this.logger.log(
+        `Deleted ${deleteResult.count} documents from workspace ${workspaceId} by user ${user.sub}`,
+      );
       return deleteResult.count;
     } catch (error: unknown) {
       if (error instanceof ForbiddenException || error instanceof NotFoundException) {
         throw error;
       }
 
-      this.logger.error(`Failed to delete workspace documents: ${getErrorMessage(error)}`, getErrorStack(error));
+      this.logger.error(
+        `Failed to delete workspace documents: ${getErrorMessage(error)}`,
+        getErrorStack(error),
+      );
       throw new InternalServerErrorException('Failed to delete workspace documents');
     }
   }
 
   async deleteDocument(documentId: string, user: JwtPayload): Promise<void> {
     try {
-      // First, get the document to check permissions
+      // First, get the document with all related data to check permissions and plan deletion
       const document = await this.prisma.document.findUnique({
         where: { id: documentId },
         select: {
           id: true,
           userId: true,
+          uploadId: true,
           workspace: {
             select: {
               workspaceId: true,
+            },
+          },
+          upload: {
+            select: {
+              id: true,
+              job: {
+                select: {
+                  id: true,
+                  result: {
+                    select: {
+                      id: true,
+                      items: {
+                        select: {
+                          id: true,
+                        },
+                      },
+                    },
+                  },
+                },
+              },
             },
           },
         },
@@ -433,17 +460,10 @@ export class DocumentService {
         }
       }
 
-      // Delete workspace associations first (due to foreign key constraints)
-      await this.prisma.workspaceDocument.deleteMany({
-        where: { documentId },
-      });
+      // Perform cascade deletion in correct order (deepest dependencies first)
+      await this.performCascadeDelete(document);
 
-      // Delete the document
-      await this.prisma.document.delete({
-        where: { id: documentId },
-      });
-
-      this.logger.log(`Document ${documentId} deleted by user ${user.sub}`);
+      this.logger.log(`Document ${documentId} and all related records deleted by user ${user.sub}`);
     } catch (error: unknown) {
       if (error instanceof NotFoundException || error instanceof ForbiddenException) {
         throw error;
@@ -459,6 +479,231 @@ export class DocumentService {
         getErrorStack(error),
       );
       throw new InternalServerErrorException('Failed to delete document');
+    }
+  }
+
+  async previewDocumentDeletion(
+    documentId: string,
+    user: JwtPayload,
+  ): Promise<DocumentDeletionPreviewDto> {
+    try {
+      // Get the document with all related data
+      const document = await this.prisma.document.findUnique({
+        where: { id: documentId },
+        select: {
+          id: true,
+          fileName: true,
+          userId: true,
+          uploadId: true,
+          workspace: {
+            select: {
+              workspaceId: true,
+            },
+          },
+          upload: {
+            select: {
+              id: true,
+              fileName: true,
+              fileSize: true,
+              job: {
+                select: {
+                  id: true,
+                  type: true,
+                  status: true,
+                  result: {
+                    select: {
+                      id: true,
+                      jsonUrl: true,
+                      csvUrl: true,
+                      items: {
+                        select: {
+                          id: true,
+                          name: true,
+                          total: true,
+                        },
+                      },
+                    },
+                  },
+                },
+              },
+            },
+          },
+        },
+      });
+
+      if (!document) {
+        throw new NotFoundException(`Document with ID ${documentId} not found`);
+      }
+
+      // Check permissions (same as delete)
+      if (document.userId !== user.sub && user.role !== 0) {
+        if (document.workspace.length > 0) {
+          let hasWorkspaceAccess = false;
+          for (const ws of document.workspace) {
+            try {
+              await this.validateWorkspaceAccess(ws.workspaceId, user);
+              hasWorkspaceAccess = true;
+              break;
+            } catch {
+              // Continue checking other workspaces
+            }
+          }
+          if (!hasWorkspaceAccess) {
+            throw new ForbiddenException('Access denied to this document');
+          }
+        } else {
+          throw new ForbiddenException('Access denied to this document');
+        }
+      }
+
+      // Calculate what will be deleted
+      const preview = {
+        document: {
+          id: document.id,
+          fileName: document.fileName,
+        },
+        upload: document.upload
+          ? {
+              id: document.upload.id,
+              fileName: document.upload.fileName,
+              fileSize: document.upload.fileSize,
+            }
+          : null,
+        job: document.upload?.job
+          ? {
+              id: document.upload.job.id,
+              type: document.upload.job.type,
+              status: document.upload.job.status,
+            }
+          : null,
+        documentResult: document.upload?.job?.result
+          ? {
+              id: document.upload.job.result.id,
+              jsonUrl: document.upload.job.result.jsonUrl,
+              csvUrl: document.upload.job.result.csvUrl,
+            }
+          : null,
+        invoiceItems: document.upload?.job?.result?.items || [],
+        workspaceAssociations: document.workspace.length,
+        totalRecordsToDelete: this.calculateTotalRecords(document),
+      };
+
+      return preview;
+    } catch (error: unknown) {
+      if (error instanceof NotFoundException || error instanceof ForbiddenException) {
+        throw error;
+      }
+
+      this.logger.error(
+        `Failed to preview document deletion: ${getErrorMessage(error)}`,
+        getErrorStack(error),
+      );
+      throw new InternalServerErrorException('Failed to preview document deletion');
+    }
+  }
+
+  private calculateTotalRecords(document: {
+    workspace: { workspaceId: string }[];
+    upload?: {
+      job?: {
+        result?: {
+          items: { id: string }[];
+        } | null;
+      } | null;
+    } | null;
+  }): number {
+    let total = 1; // Document itself
+
+    if (document.workspace.length > 0) {
+      total += document.workspace.length; // WorkspaceDocument associations
+    }
+
+    if (document.upload) {
+      total += 1; // Upload record
+
+      if (document.upload.job) {
+        total += 1; // Job record
+
+        if (document.upload.job.result) {
+          total += 1; // DocumentResult record
+          total += document.upload.job.result.items.length; // InvoiceItems
+        }
+      }
+    }
+
+    return total;
+  }
+
+  private async performCascadeDelete(document: {
+    id: string;
+    upload?: {
+      id: string;
+      job?: {
+        id: string;
+        result?: {
+          id: string;
+          items: { id: string }[];
+        } | null;
+      } | null;
+    } | null;
+  }): Promise<void> {
+    const { id: documentId, upload } = document;
+
+    // Step 1: Delete InvoiceItems (deepest level)
+    if (upload?.job?.result?.items) {
+      const itemIds = upload.job.result.items.map(item => item.id);
+      if (itemIds.length > 0) {
+        await this.prisma.invoiceItem.deleteMany({
+          where: { id: { in: itemIds } },
+        });
+        this.logger.log(`Deleted ${itemIds.length} invoice items for document ${documentId}`);
+      }
+    }
+
+    // Step 2: Delete DocumentResult
+    if (upload?.job?.result?.id) {
+      await this.prisma.documentResult.delete({
+        where: { id: upload.job.result.id },
+      });
+      this.logger.log(`Deleted document result for document ${documentId}`);
+    }
+
+    // Step 3: Delete Job
+    if (upload?.job?.id) {
+      await this.prisma.job.delete({
+        where: { id: upload.job.id },
+      });
+      this.logger.log(`Deleted job for document ${documentId}`);
+    }
+
+    // Step 4: Delete WorkspaceDocument associations
+    await this.prisma.workspaceDocument.deleteMany({
+      where: { documentId },
+    });
+
+    // Step 5: Delete Document (this will set uploadId to null due to the relationship)
+    await this.prisma.document.delete({
+      where: { id: documentId },
+    });
+
+    // Step 6: Delete Upload (if it exists and is no longer referenced)
+    if (upload?.id) {
+      // Check if any other documents reference this upload
+      const otherDocuments = await this.prisma.document.findMany({
+        where: { uploadId: upload.id },
+        select: { id: true },
+      });
+
+      if (otherDocuments.length === 0) {
+        await this.prisma.upload.delete({
+          where: { id: upload.id },
+        });
+        this.logger.log(`Deleted upload record for document ${documentId}`);
+      } else {
+        this.logger.log(
+          `Upload record preserved - still referenced by ${otherDocuments.length} other documents`,
+        );
+      }
     }
   }
 

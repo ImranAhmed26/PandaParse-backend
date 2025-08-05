@@ -1,6 +1,7 @@
 import { Controller, Get, Post, Body, Param, UseGuards, Patch, Delete } from '@nestjs/common';
 import { DocumentService, CreateDocumentDto, DocumentResponseDto } from './document.service';
 import { BulkDeleteDocumentsDto } from './dto/bulk-delete-documents.dto';
+import { DocumentDeletionPreviewDto } from './dto/document-deletion-preview.dto';
 import { ApiBearerAuth, ApiOperation, ApiResponse, ApiTags, ApiParam } from '@nestjs/swagger';
 import { JwtAuthGuard } from 'src/auth/guards/jwt-auth.guard';
 import { RolesGuard } from 'src/auth/guards/roles.guard';
@@ -208,6 +209,36 @@ export class DocumentController {
   ): Promise<{ message: string }> {
     await this.documentService.deleteDocument(id, user);
     return { message: 'Document deleted successfully' };
+  }
+
+  @Get(':id/delete-preview')
+  @UseGuards(RolesGuard)
+  @Roles(USER_ROLES.ADMIN, USER_ROLES.USER)
+  @ApiOperation({ summary: 'Preview what will be deleted when deleting a document' })
+  @ApiParam({ name: 'id', description: 'Document ID' })
+  @ApiResponse({
+    status: 200,
+    description: 'Preview of records that will be deleted.',
+    schema: {
+      type: 'object',
+      properties: {
+        document: { type: 'object' },
+        upload: { type: 'object', nullable: true },
+        job: { type: 'object', nullable: true },
+        documentResult: { type: 'object', nullable: true },
+        invoiceItems: { type: 'array', items: { type: 'object' } },
+        workspaceAssociations: { type: 'number' },
+        totalRecordsToDelete: { type: 'number' },
+      },
+    },
+  })
+  @ApiResponse({ status: 403, description: 'Access denied to document.' })
+  @ApiResponse({ status: 404, description: 'Document not found.' })
+  previewDocumentDeletion(
+    @Param('id') id: string,
+    @CurrentUser() user: JwtPayload,
+  ): Promise<DocumentDeletionPreviewDto> {
+    return this.documentService.previewDocumentDeletion(id, user);
   }
 
   // Internal API endpoints
