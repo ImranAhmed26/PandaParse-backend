@@ -1,4 +1,14 @@
-import { Controller, Get, Query, Post, Body, UseGuards, Param, Patch } from '@nestjs/common';
+import {
+  Controller,
+  Get,
+  Query,
+  Post,
+  Body,
+  UseGuards,
+  Param,
+  Patch,
+  Logger,
+} from '@nestjs/common';
 import { S3UploadUrlService } from '../s3-upload-url/s3-upload-url.service';
 import { UploadRecordService } from './upload-record.service';
 import {
@@ -19,12 +29,16 @@ import { JwtPayload } from 'src/auth/interfaces/jwt-payload.interfaces';
 import { GeneratePresignedUrlDto } from './dto/generate-presigned-url.dto';
 import { CreateUploadRecordDto } from './dto/create-upload-record.dto';
 import { UpdateUploadStatusDto } from './dto/update-upload-status.dto';
+import { CompleteUploadDto } from './dto/complete-upload.dto';
+import { UploadCompletionResponseDto } from './dto/upload-completion-response.dto';
 
 @ApiTags('upload')
 @Controller('upload')
 @UseGuards(JwtAuthGuard)
 @ApiBearerAuth()
 export class UploadController {
+  private readonly logger = new Logger(UploadController.name);
+
   constructor(
     private readonly s3UploadUrlService: S3UploadUrlService,
     private readonly uploadRecordService: UploadRecordService,
@@ -188,6 +202,109 @@ export class UploadController {
     @CurrentUser() user: JwtPayload,
   ) {
     return this.uploadRecordService.updateUploadStatus(id, dto.status, user);
+  }
+
+  // Complete upload processing workflow
+  @Post('complete')
+  @UseGuards(RolesGuard)
+  @Roles(USER_ROLES.ADMIN, USER_ROLES.USER)
+  @ApiOperation({
+    summary: 'Complete upload processing workflow',
+    description:
+      'Creates database records (Upload, Document, Job) and queues SQS processing message after S3 upload completion',
+  })
+  @ApiResponse({
+    status: 201,
+    description: 'Upload processing completed successfully',
+    type: UploadCompletionResponseDto,
+  })
+  @ApiResponse({
+    status: 400,
+    description: 'Bad request - invalid input data or validation errors',
+    schema: {
+      type: 'object',
+      properties: {
+        statusCode: { type: 'number', example: 400 },
+        message: {
+          type: 'array',
+          items: { type: 'string' },
+          example: ['fileName should not be empty', 's3Key must match the required format'],
+        },
+        error: { type: 'string', example: 'Bad Request' },
+      },
+    },
+  })
+  @ApiResponse({
+    status: 403,
+    description: 'Forbidden - user lacks permissions for the specified workspace',
+    schema: {
+      type: 'object',
+      properties: {
+        statusCode: { type: 'number', example: 403 },
+        message: { type: 'string', example: 'Access denied to workspace' },
+        error: { type: 'string', example: 'Forbidden' },
+      },
+    },
+  })
+  @ApiResponse({
+    status: 500,
+    description: 'Internal server error - database or SQS operation failed',
+    schema: {
+      type: 'object',
+      properties: {
+        statusCode: { type: 'number', example: 500 },
+        message: { type: 'string', example: 'Failed to process upload completion' },
+        error: { type: 'string', example: 'Internal Server Error' },
+      },
+    },
+  })
+  async completeUpload(
+    @Body() dto: CompleteUploadDto,
+    @CurrentUser() user: JwtPayload,
+  ): Promise<UploadCompletionResponseDto> {
+    const requestId = `req-${Date.now()}`;
+
+    this.logger.log(`Upload completion request received`, {
+      requestId,
+      userId: user.sub,
+      userEmail: user.email,
+      workspaceId: dto.workspaceId,
+      fileName: dto.fileName,
+      fileType: dto.fileType,
+      documentType: dto.documentType,
+      s3Key: dto.s3Key,
+      timestamp: new Date().toISOString(),
+    });
+
+    try {
+      const result = await this.uploadRecordService.processUploadedFile(dto, user);
+
+      this.logger.log(`Upload completion request completed successfully`, {
+        requestId,
+        userId: user.sub,
+        uploadId: result.uploadId,
+        documentId: result.documentId,
+        jobId: result.jobId,
+        sqsMessageId: result.sqsMessageId,
+        status: result.status,
+        timestamp: new Date().toISOString(),
+      });
+
+      return result;
+    } catch (error) {
+      this.logger.error(`Upload completion request failed`, {
+        requestId,
+        userId: user.sub,
+        workspaceId: dto.workspaceId,
+        fileName: dto.fileName,
+        s3Key: dto.s3Key,
+        errorMessage: error instanceof Error ? error.message : String(error),
+        errorType: error instanceof Error ? error.constructor.name : 'Unknown',
+        timestamp: new Date().toISOString(),
+      });
+
+      throw error;
+    }
   }
 
   // Internal API endpoints for AWS operations
