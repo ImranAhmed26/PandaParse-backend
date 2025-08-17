@@ -1,5 +1,7 @@
-import { Controller, Get, Post, Body, Param, UseGuards, Patch } from '@nestjs/common';
+import { Controller, Get, Post, Body, Param, UseGuards, Patch, Delete } from '@nestjs/common';
 import { DocumentService, CreateDocumentDto, DocumentResponseDto } from './document.service';
+import { BulkDeleteDocumentsDto } from './dto/bulk-delete-documents.dto';
+import { DocumentDeletionPreviewDto } from './dto/document-deletion-preview.dto';
 import { ApiBearerAuth, ApiOperation, ApiResponse, ApiTags, ApiParam } from '@nestjs/swagger';
 import { JwtAuthGuard } from 'src/auth/guards/jwt-auth.guard';
 import { RolesGuard } from 'src/auth/guards/roles.guard';
@@ -84,6 +86,35 @@ export class DocumentController {
     return this.documentService.getDocumentsByWorkspace(workspaceId, user);
   }
 
+  @Delete('workspace/:workspaceId')
+  @UseGuards(RolesGuard)
+  @Roles(USER_ROLES.ADMIN, USER_ROLES.USER)
+  @ApiOperation({ summary: 'Delete all documents in a workspace' })
+  @ApiParam({ name: 'workspaceId', description: 'Workspace ID' })
+  @ApiResponse({
+    status: 200,
+    description: 'Workspace documents deleted successfully.',
+    schema: {
+      type: 'object',
+      properties: {
+        message: { type: 'string' },
+        deletedCount: { type: 'number' },
+      },
+    },
+  })
+  @ApiResponse({ status: 403, description: 'Access denied to workspace.' })
+  @ApiResponse({ status: 404, description: 'Workspace not found.' })
+  async deleteWorkspaceDocuments(
+    @Param('workspaceId') workspaceId: string,
+    @CurrentUser() user: JwtPayload,
+  ) {
+    const deletedCount = await this.documentService.deleteWorkspaceDocuments(workspaceId, user);
+    return {
+      message: `Successfully deleted ${deletedCount} documents from workspace`,
+      deletedCount,
+    };
+  }
+
   @Get(':id')
   @UseGuards(RolesGuard)
   @Roles(USER_ROLES.ADMIN, USER_ROLES.USER)
@@ -116,6 +147,98 @@ export class DocumentController {
     @CurrentUser() user: JwtPayload,
   ): Promise<DocumentResponseDto> {
     return this.documentService.updateDocumentStatus(id, status, user);
+  }
+
+  @Delete('bulk')
+  @UseGuards(RolesGuard)
+  @Roles(USER_ROLES.ADMIN, USER_ROLES.USER)
+  @ApiOperation({ summary: 'Delete multiple documents by IDs' })
+  @ApiResponse({
+    status: 200,
+    description: 'Bulk delete results.',
+    schema: {
+      type: 'object',
+      properties: {
+        successful: {
+          type: 'array',
+          items: { type: 'string' },
+          description: 'IDs of successfully deleted documents',
+        },
+        failed: {
+          type: 'array',
+          items: {
+            type: 'object',
+            properties: {
+              id: { type: 'string' },
+              error: { type: 'string' },
+            },
+          },
+          description: 'IDs and errors for failed deletions',
+        },
+        totalRequested: { type: 'number' },
+        totalSuccessful: { type: 'number' },
+        totalFailed: { type: 'number' },
+      },
+    },
+  })
+  @ApiResponse({ status: 400, description: 'Bad request.' })
+  async bulkDeleteDocuments(@Body() dto: BulkDeleteDocumentsDto, @CurrentUser() user: JwtPayload) {
+    return this.documentService.bulkDeleteDocuments(dto.documentIds, user);
+  }
+
+  @Delete(':id')
+  @UseGuards(RolesGuard)
+  @Roles(USER_ROLES.ADMIN, USER_ROLES.USER)
+  @ApiOperation({ summary: 'Delete document by ID' })
+  @ApiParam({ name: 'id', description: 'Document ID' })
+  @ApiResponse({
+    status: 200,
+    description: 'Document deleted successfully.',
+    schema: {
+      type: 'object',
+      properties: {
+        message: { type: 'string' },
+      },
+    },
+  })
+  @ApiResponse({ status: 403, description: 'Access denied to document.' })
+  @ApiResponse({ status: 404, description: 'Document not found.' })
+  async deleteDocument(
+    @Param('id') id: string,
+    @CurrentUser() user: JwtPayload,
+  ): Promise<{ message: string }> {
+    await this.documentService.deleteDocument(id, user);
+    return { message: 'Document deleted successfully' };
+  }
+
+  @Get(':id/delete-preview')
+  @UseGuards(RolesGuard)
+  @Roles(USER_ROLES.ADMIN, USER_ROLES.USER)
+  @ApiOperation({ summary: 'Preview what will be deleted when deleting a document' })
+  @ApiParam({ name: 'id', description: 'Document ID' })
+  @ApiResponse({
+    status: 200,
+    description: 'Preview of records that will be deleted.',
+    schema: {
+      type: 'object',
+      properties: {
+        document: { type: 'object' },
+        upload: { type: 'object', nullable: true },
+        job: { type: 'object', nullable: true },
+        documentResult: { type: 'object', nullable: true },
+        invoiceItems: { type: 'array', items: { type: 'object' } },
+        workspaceAssociations: { type: 'number' },
+        totalRecordsToDelete: { type: 'number' },
+      },
+    },
+  })
+  @ApiResponse({ status: 403, description: 'Access denied to document.' })
+  @ApiResponse({ status: 404, description: 'Document not found.' })
+  previewDocumentDeletion(
+    @Param('id') id: string,
+    @CurrentUser() user: JwtPayload,
+  ): Promise<DocumentDeletionPreviewDto> {
+    return this.documentService.previewDocumentDeletion(id, user);
   }
 
   // Internal API endpoints
@@ -154,5 +277,25 @@ export class DocumentController {
   ): Promise<DocumentResponseDto> {
     // Internal operations don't need user validation
     return this.documentService.updateDocumentStatus(id, status);
+  }
+
+  @Delete('internal/:id')
+  @UseGuards(InternalApiGuard)
+  @ApiOperation({ summary: 'Delete document for internal operations' })
+  @ApiResponse({
+    status: 200,
+    description: 'Document deleted successfully for internal use',
+  })
+  @ApiResponse({ status: 401, description: 'Invalid internal API key' })
+  async deleteInternalDocument(@Param('id') id: string): Promise<{ message: string }> {
+    // Create a mock admin user for internal operations
+    const internalUser: JwtPayload = {
+      sub: 'internal-system',
+      email: 'internal@system.com',
+      role: 0, // Admin role for internal operations
+    };
+
+    await this.documentService.deleteDocument(id, internalUser);
+    return { message: 'Document deleted successfully' };
   }
 }
