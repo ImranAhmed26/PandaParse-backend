@@ -12,7 +12,7 @@ module.exports = {
       max_memory_restart: '1G',
       env: {
         NODE_ENV: 'development',
-        PORT: process.env.PORT || 8888,
+        PORT: process.env.PORT || 8000,
         DATABASE_URL: process.env.DATABASE_URL,
 
         AWS_REGION: process.env.AWS_REGION || 'eu-west-1',
