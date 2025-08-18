@@ -74,8 +74,9 @@ JWT_ACCESS_SECRET="your-access-secret"
 JWT_REFRESH_SECRET="your-refresh-secret"
 AWS_ACCESS_KEY_ID="your-aws-key"
 AWS_SECRET_ACCESS_KEY="your-aws-secret"
-AWS_REGION="us-east-1"
+AWS_REGION="eu-west-1"
 S3_BUCKET_NAME="your-bucket-name"
+SQS_QUEUE_URL="https://sqs.region.amazonaws.com/account-id/queue-name"
 ```
 
 ## API Endpoints
