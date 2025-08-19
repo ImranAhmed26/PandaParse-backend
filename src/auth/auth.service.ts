@@ -1,9 +1,13 @@
-import { BadRequestException, Injectable, UnauthorizedException } from '@nestjs/common';
+import {
+  BadRequestException,
+  Injectable,
+  UnauthorizedException,
+} from '@nestjs/common';
 import { PrismaService } from 'src/prisma/prisma.service';
 import { JwtService } from '@nestjs/jwt';
 import { RegisterDto } from './dto/register.dto';
-import * as bcrypt from 'bcrypt';
 import { LoginDto } from './dto/login.dto';
+import * as bcrypt from 'bcrypt';
 import { jwtConstants } from './constants';
 import { UserService } from 'src/user/user.service';
 import { AuthResponseDto } from './dto/auth-response.dto';
@@ -21,48 +25,46 @@ export class AuthService {
     private userService: UserService,
   ) {}
 
+  /** User registration */
   async register(dto: RegisterDto): Promise<AuthResponseDto> {
     const existingUser = await this.prisma.user.findUnique({
       where: { email: dto.email },
     });
+
     if (existingUser) {
       throw new BadRequestException('User with this email already exists');
     }
-    if (!dto.name) {
-      throw new BadRequestException('Name is required');
-    }
-    if (!dto.password) {
-      throw new BadRequestException('Password is required');
-    }
+    if (!dto.name) throw new BadRequestException('Name is required');
+    if (!dto.password) throw new BadRequestException('Password is required');
 
-    const hashedPassword = await bcrypt.hash(dto.password, 10);
-    console.log('hashedPassword', hashedPassword);
-    const user = await this.userService.create({
-      ...dto,
-      password: hashedPassword,
-    });
-
-    // For newly registered users, they start as individual freelancers
+    const user = await this.userService.create({ ...dto });
     const userType = USER_TYPES.INDIVIDUAL_FREELANCER;
+
     return this.signToken(user.id, user.email, user.role, user.name, userType);
   }
 
+  /** User login */
   async login(dto: LoginDto): Promise<AuthResponseDto> {
     const user = await this.prisma.user.findUnique({
       where: { email: dto.email },
-      include: {
-        ownedCompany: true,
-        company: true,
-      },
+      include: { ownedCompany: true, company: true },
     });
-    if (!user || !(await bcrypt.compare(dto.password, user.password))) {
+
+    if (!user) {
+      throw new UnauthorizedException('Invalid credentials');
+    }
+
+    const passwordMatch = await bcrypt.compare(dto.password, user.password);
+    if (!passwordMatch) {
       throw new UnauthorizedException('Invalid credentials');
     }
 
     const userType = this.determineUserType(user);
+
     return this.signToken(user.id, user.email, user.role, user.name, userType);
   }
 
+  /** Refresh token logic */
   async refresh(refreshToken: string): Promise<AuthResponseDto> {
     try {
       const payload = this.jwt.verify<RefreshTokenPayload>(refreshToken, {
@@ -71,40 +73,33 @@ export class AuthService {
 
       const user = await this.prisma.user.findUnique({
         where: { id: payload.sub },
-        include: {
-          ownedCompany: true,
-          company: true,
-        },
+        include: { ownedCompany: true, company: true },
       });
+
       if (!user) {
         throw new UnauthorizedException('Invalid refresh token');
       }
+
       const userType = this.determineUserType(user);
+
       return this.signToken(user.id, user.email, user.role, user.name, userType);
     } catch {
       throw new UnauthorizedException('Invalid refresh token');
     }
   }
 
+  /** Determines user type (company owner, company user, freelancer) */
   private determineUserType(user: {
     ownedCompany?: any;
     company?: any;
     companyId?: string | null;
   }): number {
-    // If user owns a company, they are a company owner
-    if (user.ownedCompany) {
-      return USER_TYPES.COMPANY_OWNER;
-    }
-
-    // If user belongs to a company but doesn't own it, they are a company user
-    if (user.company || user.companyId) {
-      return USER_TYPES.COMPANY_USER;
-    }
-
-    // Otherwise, they are an individual freelancer
+    if (user.ownedCompany) return USER_TYPES.COMPANY_OWNER;
+    if (user.company || user.companyId) return USER_TYPES.COMPANY_USER;
     return USER_TYPES.INDIVIDUAL_FREELANCER;
   }
 
+  /** Generates JWT access & refresh tokens */
   private signToken(
     userId: string,
     email: string,
@@ -119,20 +114,11 @@ export class AuthService {
         secret: jwtConstants.accessSecret,
         expiresIn: '45m',
       }),
-      refresh_token: this.jwt.sign(
-        { sub: userId },
-        {
-          secret: jwtConstants.refreshSecret,
-          expiresIn: '7d',
-        },
-      ),
-      user: {
-        id: userId,
-        name,
-        email,
-        role,
-        userType,
-      },
+      refresh_token: this.jwt.sign({ sub: userId }, {
+        secret: jwtConstants.refreshSecret,
+        expiresIn: '7d',
+      }),
+      user: { id: userId, name, email, role, userType },
     };
   }
 }
