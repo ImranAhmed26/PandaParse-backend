@@ -8,6 +8,7 @@ import { jwtConstants } from './constants';
 import { UserService } from 'src/user/user.service';
 import { AuthResponseDto } from './dto/auth-response.dto';
 import { USER_TYPES } from 'src/common/constants/enums';
+import { getErrorMessage } from 'src/common/types/error.types';
 
 interface RefreshTokenPayload {
   sub: string;
@@ -110,8 +111,7 @@ export class AuthService {
 
       return tokens;
     } catch (error) {
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
-      console.log('💥 LOGIN ERROR:', error.message);
+      console.log('💥 LOGIN ERROR:', getErrorMessage(error));
       console.log('🔐 LOGIN DEBUG END (ERROR) ===================');
       throw error;
     }
