@@ -19,6 +19,7 @@ module.exports = {
         TEXTRACT_ROLE_ARN: process.env.TEXTRACT_ROLE_ARN,
         TEXTRACT_SNS_TOPIC_ARN: process.env.TEXTRACT_SNS_TOPIC_ARN,
         TEXTRACT_OUTPUT_BUCKET: process.env.TEXTRACT_OUTPUT_BUCKET,
+        SQS_QUEUE_URL: process.env.SQS_QUEUE_URL,
 
         AWS_ACCESS_KEY_ID: process.env.AWS_ACCESS_KEY_ID,
         AWS_SECRET_ACCESS_KEY: process.env.AWS_SECRET_ACCESS_KEY,
@@ -47,6 +48,7 @@ module.exports = {
         AWS_ACCESS_KEY_ID: process.env.AWS_ACCESS_KEY_ID,
         AWS_SECRET_ACCESS_KEY: process.env.AWS_SECRET_ACCESS_KEY,
         S3_BUCKET_NAME: process.env.S3_BUCKET_NAME,
+        SQS_QUEUE_URL: process.env.SQS_QUEUE_URL,
 
         JWT_SECRET: process.env.JWT_SECRET,
         INTERNAL_API_KEY: process.env.INTERNAL_API_KEY,
