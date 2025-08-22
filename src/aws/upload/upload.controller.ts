@@ -205,7 +205,7 @@ export class UploadController {
   }
 
   // Complete upload processing workflow
-  @Post('complete')
+  @Post('process')
   @UseGuards(RolesGuard)
   @Roles(USER_ROLES.ADMIN, USER_ROLES.USER)
   @ApiOperation({
