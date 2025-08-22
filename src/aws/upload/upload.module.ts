@@ -1,6 +1,6 @@
 import { Module } from '@nestjs/common';
 import { UploadController } from './upload.controller';
-import { UploadRecordService } from './upload-record.service';
+import { UploadRecordService } from './upload.service';
 import { S3UploadUrlModule } from '../s3-upload-url/s3-upload-url.module';
 import { PrismaModule } from '../../prisma/prisma.module';
 import { AwsSqsModule } from '../sqs/aws-sqs.module';

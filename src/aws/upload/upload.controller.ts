@@ -10,7 +10,7 @@ import {
   Logger,
 } from '@nestjs/common';
 import { S3UploadUrlService } from '../s3-upload-url/s3-upload-url.service';
-import { UploadRecordService } from './upload-record.service';
+import { UploadRecordService } from './upload.service';
 import {
   ApiOperation,
   ApiQuery,
