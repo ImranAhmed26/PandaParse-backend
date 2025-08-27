@@ -133,11 +133,12 @@ model Upload {
 }
 
 model Job {
-  id          String       @id @default(uuid())
-  startedAt   DateTime     @default(now())
-  completedAt DateTime?
-  status      JobStatus    @default(pending)
-  type        DocumentType
+  id            String       @id @default(uuid())
+  startedAt     DateTime     @default(now())
+  completedAt   DateTime?
+  status        JobStatus    @default(pending)
+  type          DocumentType
+  textractJobId String?      // AWS Textract job ID for tracking
 
   upload   Upload @relation(fields: [uploadId], references: [id])
   uploadId String @unique

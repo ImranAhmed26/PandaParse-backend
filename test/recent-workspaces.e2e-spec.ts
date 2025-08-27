@@ -62,7 +62,7 @@ describe('Recent Workspaces (e2e)', () => {
       // This test would require proper JWT authentication setup
       // For now, we'll create a basic structure test
 
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-argument
+       
       await request(app.getHttpServer())
         .get('/workspace/recent')
         .set('Authorization', `Bearer ${authToken}`)

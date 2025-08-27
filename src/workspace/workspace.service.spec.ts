@@ -49,7 +49,7 @@ describe('WorkspaceService', () => {
   };
 
   beforeEach(async () => {
-    // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
+     
     const mockPrismaService = {
       workspace: {
         findMany: jest.fn(),
@@ -71,7 +71,7 @@ describe('WorkspaceService', () => {
       $transaction: jest.fn(),
     } as any;
 
-    // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
+     
     const mockMembershipService = {
       getWorkspaceMemberCount: jest.fn(),
       validateMembershipEligibility: jest.fn(),
@@ -86,21 +86,21 @@ describe('WorkspaceService', () => {
         WorkspaceService,
         {
           provide: PrismaService,
-          // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
+           
           useValue: mockPrismaService,
         },
         {
           provide: MembershipService,
-          // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
+           
           useValue: mockMembershipService,
         },
       ],
     }).compile();
 
     service = module.get<WorkspaceService>(WorkspaceService);
-    // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
+     
     prismaService = module.get(PrismaService);
-    // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
+     
     membershipService = module.get(MembershipService);
   });
 
@@ -109,7 +109,7 @@ describe('WorkspaceService', () => {
   });
 
   describe('getRecentWorkspaces', () => {
-    /* eslint-disable @typescript-eslint/no-unsafe-call */
+     
     /* eslint-disable @typescript-eslint/no-unsafe-member-access */
     it('should return 6 workspaces when user has more than 6 workspaces', async () => {
       // Create 8 mock workspaces
@@ -311,7 +311,7 @@ describe('WorkspaceService', () => {
       expect(result[0]).not.toHaveProperty('documents');
       expect(result[0]).not.toHaveProperty('activityTimestamp');
     });
-    /* eslint-enable @typescript-eslint/no-unsafe-call */
+     
     /* eslint-enable @typescript-eslint/no-unsafe-member-access */
   });
 });

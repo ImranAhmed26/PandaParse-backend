@@ -12,9 +12,9 @@ import { WorkspaceResponseDto } from './dto/workspace-response.dto';
 
 describe('WorkspaceController', () => {
   let controller: WorkspaceController;
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+   
   let workspaceService: any;
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any, @typescript-eslint/no-unused-vars
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   let membershipService: any;
 
   const mockUser: JwtPayload = {
@@ -83,9 +83,9 @@ describe('WorkspaceController', () => {
       .compile();
 
     controller = module.get<WorkspaceController>(WorkspaceController);
-    // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
+     
     workspaceService = module.get(WorkspaceService);
-    // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
+     
     membershipService = module.get(MembershipService);
   });
 
@@ -94,7 +94,7 @@ describe('WorkspaceController', () => {
   });
 
   describe('getRecentWorkspaces', () => {
-    /* eslint-disable @typescript-eslint/no-unsafe-call */
+     
     /* eslint-disable @typescript-eslint/no-unsafe-member-access */
     it('should return recent workspaces for authenticated user', async () => {
       const mockRecentWorkspaces = [mockWorkspaceResponse];
@@ -234,7 +234,7 @@ describe('WorkspaceController', () => {
       expect(result[0].memberCount).toBe(5);
       expect(typeof result[0].memberCount).toBe('number');
     });
-    /* eslint-enable @typescript-eslint/no-unsafe-call */
+     
     /* eslint-enable @typescript-eslint/no-unsafe-member-access */
   });
 });
