@@ -44,6 +44,7 @@ export class JobController {
         errorMessage: { type: 'string', nullable: true },
         errorCode: { type: 'string', nullable: true },
         textractJobId: { type: 'string', nullable: true },
+        ocrJsonUrl: { type: 'string', nullable: true },
       },
     },
   })
@@ -76,6 +77,7 @@ export class JobController {
           errorMessage: { type: 'string', nullable: true },
           errorCode: { type: 'string', nullable: true },
           textractJobId: { type: 'string', nullable: true },
+          ocrJsonUrl: { type: 'string', nullable: true },
         },
       },
     },
@@ -105,6 +107,7 @@ export class JobController {
         errorMessage: { type: 'string', nullable: true },
         errorCode: { type: 'string', nullable: true },
         textractJobId: { type: 'string', nullable: true },
+        ocrJsonUrl: { type: 'string', nullable: true },
       },
     },
   })
@@ -138,6 +141,7 @@ export class JobController {
         errorMessage: { type: 'string', nullable: true },
         errorCode: { type: 'string', nullable: true },
         textractJobId: { type: 'string', nullable: true },
+        ocrJsonUrl: { type: 'string', nullable: true },
       },
     },
   })
@@ -189,6 +193,7 @@ export class JobController {
         errorMessage: { type: 'string', nullable: true },
         errorCode: { type: 'string', nullable: true },
         textractJobId: { type: 'string', nullable: true },
+        ocrJsonUrl: { type: 'string', nullable: true },
       },
     },
   })
@@ -226,6 +231,7 @@ export class JobController {
         errorMessage: { type: 'string', nullable: true },
         errorCode: { type: 'string', nullable: true },
         textractJobId: { type: 'string', nullable: true },
+        ocrJsonUrl: { type: 'string', nullable: true },
       },
     },
   })
@@ -263,6 +269,11 @@ export class JobController {
           nullable: true,
           description: 'AWS Textract job ID for correlation',
         },
+        ocrJsonKey: {
+          type: 'string',
+          nullable: true,
+          description: 'S3 key for OCR JSON results',
+        },
       },
     },
   })
@@ -282,6 +293,7 @@ export class JobController {
         errorMessage: { type: 'string', nullable: true },
         errorCode: { type: 'string', nullable: true },
         textractJobId: { type: 'string', nullable: true },
+        ocrJsonUrl: { type: 'string', nullable: true },
       },
     },
   })

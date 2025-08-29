@@ -82,6 +82,7 @@ describe('JobService', () => {
           errorMessage: true,
           errorCode: true,
           textractJobId: true,
+          ocrJsonUrl: true,
         },
       });
 
@@ -114,6 +115,7 @@ describe('JobService', () => {
           errorMessage: true,
           errorCode: true,
           textractJobId: true,
+          ocrJsonUrl: true,
         },
       });
 
@@ -274,6 +276,221 @@ describe('JobService', () => {
       await expect(service.updateJobStatus('job-123', updateData)).rejects.toThrow(
         'Job with ID job-123 not found',
       );
+    });
+
+    // Tests for ocrJsonKey functionality
+    it('should update job status with valid ocrJsonKey', async () => {
+      const updateData: UpdateJobStatusDto = {
+        status: JobStatus.success,
+        ocrJsonKey: 'ocr/job-123.json',
+      };
+
+      const mockJobWithOcrKey = { ...mockJob, ocrJsonUrl: 'ocr/job-123.json' };
+      mockPrismaService.job.update.mockResolvedValue(mockJobWithOcrKey);
+
+      const result = await service.updateJobStatus('job-123', updateData);
+
+      expect(mockPrismaService.job.update).toHaveBeenCalledWith({
+        where: { id: 'job-123' },
+        data: {
+          status: JobStatus.success,
+          ocrJsonUrl: 'ocr/job-123.json',
+          completedAt: expect.any(Date),
+        },
+        select: {
+          id: true,
+          status: true,
+          type: true,
+          uploadId: true,
+          userId: true,
+          startedAt: true,
+          completedAt: true,
+          errorMessage: true,
+          errorCode: true,
+          textractJobId: true,
+          ocrJsonUrl: true,
+        },
+      });
+
+      expect(result).toEqual(mockJobWithOcrKey);
+    });
+
+    it('should update job status with both textractJobId and ocrJsonKey', async () => {
+      const updateData: UpdateJobStatusDto = {
+        status: JobStatus.success,
+        textractJobId: 'textract-job-123',
+        ocrJsonKey: 'ocr/job-123.json',
+      };
+
+      const mockJobWithBoth = { ...mockJob, ocrJsonUrl: 'ocr/job-123.json' };
+      mockPrismaService.job.update.mockResolvedValue(mockJobWithBoth);
+
+      const result = await service.updateJobStatus('job-123', updateData);
+
+      expect(mockPrismaService.job.update).toHaveBeenCalledWith({
+        where: { id: 'job-123' },
+        data: {
+          status: JobStatus.success,
+          textractJobId: 'textract-job-123',
+          ocrJsonUrl: 'ocr/job-123.json',
+          completedAt: expect.any(Date),
+        },
+        select: expect.any(Object),
+      });
+
+      expect(result).toEqual(mockJobWithBoth);
+    });
+
+    it('should throw BadRequestException for empty ocrJsonKey', async () => {
+      const updateData: UpdateJobStatusDto = {
+        status: JobStatus.success,
+        ocrJsonKey: '',
+      };
+
+      await expect(service.updateJobStatus('job-123', updateData)).rejects.toThrow(
+        BadRequestException,
+      );
+      await expect(service.updateJobStatus('job-123', updateData)).rejects.toThrow(
+        'S3 key must be a non-empty string',
+      );
+    });
+
+    it('should throw BadRequestException for non-string ocrJsonKey', async () => {
+      const updateData: any = {
+        status: JobStatus.success,
+        ocrJsonKey: 123,
+      };
+
+      await expect(service.updateJobStatus('job-123', updateData)).rejects.toThrow(
+        BadRequestException,
+      );
+      await expect(service.updateJobStatus('job-123', updateData)).rejects.toThrow(
+        'S3 key must be a non-empty string',
+      );
+    });
+
+    it('should throw BadRequestException for ocrJsonKey with invalid format', async () => {
+      const invalidKeys = [
+        'invalid-key.json', // Missing ocr/ prefix
+        'ocr/file.txt', // Wrong extension
+        'ocr/../file.json', // Path traversal
+        'ocr//file.json', // Double slash
+        'ocr/file@name.json', // Invalid characters
+        'ocr/.json', // Empty filename
+        'ocr/' + 'a'.repeat(250) + '.json', // Too long
+      ];
+
+      for (const invalidKey of invalidKeys) {
+        const updateData: UpdateJobStatusDto = {
+          status: JobStatus.success,
+          ocrJsonKey: invalidKey,
+        };
+
+        await expect(service.updateJobStatus('job-123', updateData)).rejects.toThrow(
+          BadRequestException,
+        );
+      }
+    });
+
+    it('should throw BadRequestException for ocrJsonKey with whitespace issues', async () => {
+      const invalidKeys = [
+        ' ocr/file.json', // Leading whitespace
+        'ocr/file.json ', // Trailing whitespace
+        ' ocr/file.json ', // Both leading and trailing whitespace
+      ];
+
+      for (const invalidKey of invalidKeys) {
+        const updateData: UpdateJobStatusDto = {
+          status: JobStatus.success,
+          ocrJsonKey: invalidKey,
+        };
+
+        await expect(service.updateJobStatus('job-123', updateData)).rejects.toThrow(
+          BadRequestException,
+        );
+        await expect(service.updateJobStatus('job-123', updateData)).rejects.toThrow(
+          'S3 key must not contain leading or trailing whitespace',
+        );
+      }
+    });
+
+    it('should throw BadRequestException for ocrJsonKey that is too short', async () => {
+      const updateData: UpdateJobStatusDto = {
+        status: JobStatus.success,
+        ocrJsonKey: 'a.j', // Too short
+      };
+
+      await expect(service.updateJobStatus('job-123', updateData)).rejects.toThrow(
+        BadRequestException,
+      );
+      await expect(service.updateJobStatus('job-123', updateData)).rejects.toThrow(
+        'S3 key too short',
+      );
+    });
+
+    it('should throw BadRequestException for ocrJsonKey with control characters', async () => {
+      const updateData: UpdateJobStatusDto = {
+        status: JobStatus.success,
+        ocrJsonKey: 'ocr/file\x00.json', // Contains null byte
+      };
+
+      await expect(service.updateJobStatus('job-123', updateData)).rejects.toThrow(
+        BadRequestException,
+      );
+      await expect(service.updateJobStatus('job-123', updateData)).rejects.toThrow(
+        'S3 key must not contain control characters',
+      );
+    });
+
+    it('should throw BadRequestException for ocrJsonKey with filename part too long', async () => {
+      const longFilename = 'a'.repeat(201); // 201 characters, exceeds 200 limit
+      const updateData: UpdateJobStatusDto = {
+        status: JobStatus.success,
+        ocrJsonKey: `ocr/${longFilename}.json`,
+      };
+
+      await expect(service.updateJobStatus('job-123', updateData)).rejects.toThrow(
+        BadRequestException,
+      );
+      await expect(service.updateJobStatus('job-123', updateData)).rejects.toThrow(
+        'S3 key filename part too long',
+      );
+    });
+
+    it('should accept valid ocrJsonKey formats', async () => {
+      const validKeys = [
+        'ocr/job-123.json',
+        'ocr/job_456.json',
+        'ocr/JOB789.json',
+        'ocr/job-abc-def_123.json',
+      ];
+
+      for (const validKey of validKeys) {
+        const updateData: UpdateJobStatusDto = {
+          status: JobStatus.success,
+          ocrJsonKey: validKey,
+        };
+
+        const mockJobWithValidKey = { ...mockJob, ocrJsonUrl: validKey };
+        mockPrismaService.job.update.mockResolvedValue(mockJobWithValidKey);
+
+        const result = await service.updateJobStatus('job-123', updateData);
+
+        expect(mockPrismaService.job.update).toHaveBeenCalledWith({
+          where: { id: 'job-123' },
+          data: {
+            status: JobStatus.success,
+            ocrJsonUrl: validKey,
+            completedAt: expect.any(Date),
+          },
+          select: expect.any(Object),
+        });
+
+        expect(result).toEqual(mockJobWithValidKey);
+
+        // Clear mock for next iteration
+        mockPrismaService.job.update.mockClear();
+      }
     });
   });
 });

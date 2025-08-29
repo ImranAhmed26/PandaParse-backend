@@ -139,6 +139,7 @@ model Job {
   status        JobStatus    @default(pending)
   type          DocumentType
   textractJobId String?      // AWS Textract job ID for tracking
+  ocrJsonUrl    String?      // S3 URL or key for raw Textract OCR results
 
   upload   Upload @relation(fields: [uploadId], references: [id])
   uploadId String @unique
