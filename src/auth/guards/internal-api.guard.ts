@@ -11,16 +11,19 @@ export class InternalApiGuard implements CanActivate {
     const apiKey = this.extractApiKeyFromHeader(request);
 
     if (!apiKey) {
+      console.error('❌ Missing API key in request headers:', request.headers);
       throw new UnauthorizedException('Internal API key is required');
     }
 
     const validApiKey = this.configService.get<string>('INTERNAL_API_KEY');
 
     if (!validApiKey) {
+      console.error('❌ No INTERNAL_API_KEY configured in backend env');
       throw new UnauthorizedException('Internal API key not configured');
     }
 
     if (apiKey !== validApiKey) {
+      console.error(`❌ Invalid API key - Received: "${apiKey}", Expected: "${validApiKey}"`);
       throw new UnauthorizedException('Invalid internal API key');
     }
 
