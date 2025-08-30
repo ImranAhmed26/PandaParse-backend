@@ -1,6 +1,13 @@
 import { Controller, Get, Post, Body, Param, UseGuards, Patch } from '@nestjs/common';
-import { JobService, CreateJobDto, JobResponseDto } from './job.service';
-import { ApiBearerAuth, ApiOperation, ApiResponse, ApiTags, ApiParam } from '@nestjs/swagger';
+import { JobService, CreateJobDto, JobResponseDto, UpdateJobStatusDto } from './job.service';
+import {
+  ApiBearerAuth,
+  ApiOperation,
+  ApiResponse,
+  ApiTags,
+  ApiParam,
+  ApiBody,
+} from '@nestjs/swagger';
 import { JwtAuthGuard } from 'src/auth/guards/jwt-auth.guard';
 import { RolesGuard } from 'src/auth/guards/roles.guard';
 import { InternalApiGuard } from 'src/auth/guards/internal-api.guard';
@@ -36,6 +43,8 @@ export class JobController {
         completedAt: { type: 'string', format: 'date-time', nullable: true },
         errorMessage: { type: 'string', nullable: true },
         errorCode: { type: 'string', nullable: true },
+        textractJobId: { type: 'string', nullable: true },
+        ocrJsonUrl: { type: 'string', nullable: true },
       },
     },
   })
@@ -67,6 +76,8 @@ export class JobController {
           completedAt: { type: 'string', format: 'date-time', nullable: true },
           errorMessage: { type: 'string', nullable: true },
           errorCode: { type: 'string', nullable: true },
+          textractJobId: { type: 'string', nullable: true },
+          ocrJsonUrl: { type: 'string', nullable: true },
         },
       },
     },
@@ -83,6 +94,22 @@ export class JobController {
   @ApiResponse({
     status: 200,
     description: 'Return job for upload.',
+    schema: {
+      type: 'object',
+      properties: {
+        id: { type: 'string' },
+        status: { type: 'string', enum: Object.values(JobStatus) },
+        type: { type: 'string', enum: Object.values(DocumentType) },
+        uploadId: { type: 'string' },
+        userId: { type: 'string' },
+        startedAt: { type: 'string', format: 'date-time' },
+        completedAt: { type: 'string', format: 'date-time', nullable: true },
+        errorMessage: { type: 'string', nullable: true },
+        errorCode: { type: 'string', nullable: true },
+        textractJobId: { type: 'string', nullable: true },
+        ocrJsonUrl: { type: 'string', nullable: true },
+      },
+    },
   })
   @ApiResponse({ status: 403, description: 'Access denied to job.' })
   @ApiResponse({ status: 404, description: 'Job not found.' })
@@ -101,6 +128,22 @@ export class JobController {
   @ApiResponse({
     status: 200,
     description: 'Return job.',
+    schema: {
+      type: 'object',
+      properties: {
+        id: { type: 'string' },
+        status: { type: 'string', enum: Object.values(JobStatus) },
+        type: { type: 'string', enum: Object.values(DocumentType) },
+        uploadId: { type: 'string' },
+        userId: { type: 'string' },
+        startedAt: { type: 'string', format: 'date-time' },
+        completedAt: { type: 'string', format: 'date-time', nullable: true },
+        errorMessage: { type: 'string', nullable: true },
+        errorCode: { type: 'string', nullable: true },
+        textractJobId: { type: 'string', nullable: true },
+        ocrJsonUrl: { type: 'string', nullable: true },
+      },
+    },
   })
   @ApiResponse({ status: 403, description: 'Access denied to job.' })
   @ApiResponse({ status: 404, description: 'Job not found.' })
@@ -113,24 +156,59 @@ export class JobController {
   @Roles(USER_ROLES.ADMIN, USER_ROLES.INTERNAL) // Only admin and internal can update status
   @ApiOperation({ summary: 'Update job status (Admin/Internal only)' })
   @ApiParam({ name: 'id', description: 'Job ID' })
+  @ApiBody({
+    description: 'Job status update data',
+    schema: {
+      type: 'object',
+      required: ['status'],
+      properties: {
+        status: { type: 'string', enum: Object.values(JobStatus), description: 'New job status' },
+        errorMessage: {
+          type: 'string',
+          nullable: true,
+          description: 'Error message if job failed',
+        },
+        errorCode: { type: 'string', nullable: true, description: 'Error code if job failed' },
+        textractJobId: {
+          type: 'string',
+          nullable: true,
+          description: 'AWS Textract job ID for correlation',
+        },
+      },
+    },
+  })
   @ApiResponse({
     status: 200,
     description: 'Job status updated successfully.',
+    schema: {
+      type: 'object',
+      properties: {
+        id: { type: 'string' },
+        status: { type: 'string', enum: Object.values(JobStatus) },
+        type: { type: 'string', enum: Object.values(DocumentType) },
+        uploadId: { type: 'string' },
+        userId: { type: 'string' },
+        startedAt: { type: 'string', format: 'date-time' },
+        completedAt: { type: 'string', format: 'date-time', nullable: true },
+        errorMessage: { type: 'string', nullable: true },
+        errorCode: { type: 'string', nullable: true },
+        textractJobId: { type: 'string', nullable: true },
+        ocrJsonUrl: { type: 'string', nullable: true },
+      },
+    },
+  })
+  @ApiResponse({
+    status: 400,
+    description: 'Bad request - invalid textractJobId or other validation errors',
   })
   @ApiResponse({ status: 404, description: 'Job not found.' })
   @ApiResponse({ status: 403, description: 'Insufficient permissions.' })
   updateJobStatus(
     @Param('id') id: string,
-    @Body() body: { status: JobStatus; errorMessage?: string; errorCode?: string },
+    @Body() body: UpdateJobStatusDto,
     @CurrentUser() user: JwtPayload,
   ): Promise<JobResponseDto> {
-    return this.jobService.updateJobStatus(
-      id,
-      body.status,
-      body.errorMessage,
-      body.errorCode,
-      user,
-    );
+    return this.jobService.updateJobStatus(id, body, user);
   }
 
   // Internal API endpoints
@@ -140,6 +218,22 @@ export class JobController {
   @ApiResponse({
     status: 201,
     description: 'Job created successfully for internal use',
+    schema: {
+      type: 'object',
+      properties: {
+        id: { type: 'string' },
+        status: { type: 'string', enum: Object.values(JobStatus) },
+        type: { type: 'string', enum: Object.values(DocumentType) },
+        uploadId: { type: 'string' },
+        userId: { type: 'string' },
+        startedAt: { type: 'string', format: 'date-time' },
+        completedAt: { type: 'string', format: 'date-time', nullable: true },
+        errorMessage: { type: 'string', nullable: true },
+        errorCode: { type: 'string', nullable: true },
+        textractJobId: { type: 'string', nullable: true },
+        ocrJsonUrl: { type: 'string', nullable: true },
+      },
+    },
   })
   @ApiResponse({ status: 401, description: 'Invalid internal API key' })
   createInternal(@Body() dto: CreateJobDto & { userId: string }): Promise<JobResponseDto> {
@@ -156,16 +250,64 @@ export class JobController {
   @Patch('internal/:id/status')
   @UseGuards(InternalApiGuard)
   @ApiOperation({ summary: 'Update job status for internal operations' })
+  @ApiParam({ name: 'id', description: 'Job ID' })
+  @ApiBody({
+    description: 'Job status update data',
+    schema: {
+      type: 'object',
+      required: ['status'],
+      properties: {
+        status: { type: 'string', enum: Object.values(JobStatus), description: 'New job status' },
+        errorMessage: {
+          type: 'string',
+          nullable: true,
+          description: 'Error message if job failed',
+        },
+        errorCode: { type: 'string', nullable: true, description: 'Error code if job failed' },
+        textractJobId: {
+          type: 'string',
+          nullable: true,
+          description: 'AWS Textract job ID for correlation',
+        },
+        ocrJsonKey: {
+          type: 'string',
+          nullable: true,
+          description: 'S3 key for OCR JSON results',
+        },
+      },
+    },
+  })
   @ApiResponse({
     status: 200,
     description: 'Job status updated successfully for internal use',
+    schema: {
+      type: 'object',
+      properties: {
+        id: { type: 'string' },
+        status: { type: 'string', enum: Object.values(JobStatus) },
+        type: { type: 'string', enum: Object.values(DocumentType) },
+        uploadId: { type: 'string' },
+        userId: { type: 'string' },
+        startedAt: { type: 'string', format: 'date-time' },
+        completedAt: { type: 'string', format: 'date-time', nullable: true },
+        errorMessage: { type: 'string', nullable: true },
+        errorCode: { type: 'string', nullable: true },
+        textractJobId: { type: 'string', nullable: true },
+        ocrJsonUrl: { type: 'string', nullable: true },
+      },
+    },
+  })
+  @ApiResponse({
+    status: 400,
+    description: 'Bad request - invalid textractJobId or other validation errors',
   })
   @ApiResponse({ status: 401, description: 'Invalid internal API key' })
+  @ApiResponse({ status: 404, description: 'Job not found' })
   updateInternalJobStatus(
     @Param('id') id: string,
-    @Body() body: { status: JobStatus; errorMessage?: string; errorCode?: string },
+    @Body() body: UpdateJobStatusDto,
   ): Promise<JobResponseDto> {
     // Internal operations don't need user validation
-    return this.jobService.updateJobStatus(id, body.status, body.errorMessage, body.errorCode);
+    return this.jobService.updateJobStatus(id, body);
   }
 }

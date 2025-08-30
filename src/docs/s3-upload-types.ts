@@ -76,6 +76,7 @@ export interface UpdateJobStatusRequest {
   status: JobStatus;
   errorMessage?: string;
   errorCode?: string;
+  textractJobId?: string;
 }
 
 // Response Interfaces
@@ -120,6 +121,7 @@ export interface JobResponse {
   completedAt?: string | null;
   errorMessage?: string | null;
   errorCode?: string | null;
+  textractJobId?: string | null;
 }
 
 // Error Response Interface
