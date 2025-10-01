@@ -6,12 +6,21 @@ WORKDIR /app
 
 # Copy package files and install dependencies
 COPY package*.json ./
-RUN npm install --production
+RUN npm install
 
-# Copy all source files
+# Copy Prisma schema (important to do before generating)
+COPY prisma ./prisma
+
+# Generate Prisma client
+RUN npx prisma generate
+
+# Copy the rest of the source code
 COPY . .
 
-# Expose backend port (e.g. 8000)
+# Build the project
+RUN npm run build
+
+# Expose backend port
 EXPOSE 8000
 
 # Run the app
