@@ -1,7 +1,7 @@
 import {
   Controller,
   Get,
-  Query,
+  // Query,
   Post,
   Body,
   UseGuards,
@@ -13,7 +13,7 @@ import { S3UploadUrlService } from '../s3-upload-url/s3-upload-url.service';
 import { UploadRecordService } from './upload.service';
 import {
   ApiOperation,
-  ApiQuery,
+  // ApiQuery,
   ApiResponse,
   ApiTags,
   ApiBearerAuth,
@@ -44,23 +44,6 @@ export class UploadController {
     private readonly uploadRecordService: UploadRecordService,
   ) {}
 
-  // Legacy endpoint for backward compatibility
-  @Get('generate-url')
-  @ApiOperation({ summary: 'Generate a pre-signed URL for file upload (Legacy)' })
-  @ApiQuery({ name: 'type', required: false, description: 'File type (e.g., pdf, png, jpg, jpeg)' })
-  @ApiResponse({
-    status: 200,
-    description: 'Returns a pre-signed URL and file key',
-    schema: {
-      example: {
-        url: 'https://s3.eu-west-1.amazonaws.com/invoice-uploads/uploads/uuid.pdf?...',
-        key: 'uploads/uuid.pdf',
-      },
-    },
-  })
-  async getUploadUrl(@Query('type') type: string) {
-    return await this.s3UploadUrlService.generateUploadUrl(type || 'pdf');
-  }
 
   // New enhanced endpoint for workspace-based uploads
   @Post('generate-url')
