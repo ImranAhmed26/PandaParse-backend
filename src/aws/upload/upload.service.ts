@@ -396,7 +396,7 @@ export class UploadRecordService {
             });
 
             // Create Document record
-            const documentUrl = `s3://${process.env.S3_BUCKET}/${data.s3Key}`;
+            const documentUrl = `s3://${process.env.S3_BUCKET_NAME}/${data.s3Key}`;
             const document = await tx.document.create({
               data: {
                 fileName: data.fileName,
