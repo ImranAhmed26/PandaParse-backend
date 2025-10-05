@@ -33,6 +33,12 @@ export class WorkspaceResponseDto {
   memberCount?: number;
 
   @ApiPropertyOptional({
+    description: 'Number of documents in this workspace',
+    example: 12,
+  })
+  documentCount?: number;
+
+  @ApiPropertyOptional({
     description: 'List of workspace members (included when specifically requested)',
     type: [WorkspaceMemberDto],
   })

@@ -106,6 +106,11 @@ export class WorkspaceService {
             creatorId: true,
             createdAt: true,
             updatedAt: true,
+            _count: {
+              select: {
+                documents: true,
+              },
+            },
           },
         });
 
@@ -133,6 +138,7 @@ export class WorkspaceService {
       return {
         ...result,
         memberCount,
+        documentCount: result._count.documents,
       };
     } catch (error: unknown) {
       if (error instanceof ForbiddenException || error instanceof BadRequestException) {
@@ -174,6 +180,7 @@ export class WorkspaceService {
             _count: {
               select: {
                 members: true,
+                documents: true,
               },
             },
           },
@@ -184,7 +191,7 @@ export class WorkspaceService {
 
       const totalPages = Math.ceil(total / limit);
 
-      // Transform workspaces to include member count
+      // Transform workspaces to include member count and document count
       const transformedWorkspaces = workspaces.map(workspace => ({
         id: workspace.id,
         name: workspace.name,
@@ -194,6 +201,7 @@ export class WorkspaceService {
         createdAt: workspace.createdAt,
         updatedAt: workspace.updatedAt,
         memberCount: workspace._count.members,
+        documentCount: workspace._count.documents,
       }));
 
       return {
@@ -244,6 +252,7 @@ export class WorkspaceService {
             _count: {
               select: {
                 members: true,
+                documents: true,
               },
             },
           },
@@ -262,7 +271,7 @@ export class WorkspaceService {
 
       const totalPages = Math.ceil(total / limit);
 
-      // Transform workspaces to include member count
+      // Transform workspaces to include member count and document count
       const transformedWorkspaces = workspaces.map(workspace => ({
         id: workspace.id,
         name: workspace.name,
@@ -272,6 +281,7 @@ export class WorkspaceService {
         createdAt: workspace.createdAt,
         updatedAt: workspace.updatedAt,
         memberCount: workspace._count.members,
+        documentCount: workspace._count.documents,
       }));
 
       return {
@@ -307,6 +317,7 @@ export class WorkspaceService {
             _count: {
               select: {
                 members: true,
+                documents: true,
               },
             },
             members: {
@@ -340,6 +351,7 @@ export class WorkspaceService {
           createdAt: workspace.createdAt,
           updatedAt: workspace.updatedAt,
           memberCount: workspace._count.members,
+          documentCount: workspace._count.documents,
           members: workspace.members.map(member => ({
             id: member.id,
             userId: member.userId,
@@ -363,6 +375,7 @@ export class WorkspaceService {
             _count: {
               select: {
                 members: true,
+                documents: true,
               },
             },
           },
@@ -381,6 +394,7 @@ export class WorkspaceService {
           createdAt: workspace.createdAt,
           updatedAt: workspace.updatedAt,
           memberCount: workspace._count.members,
+          documentCount: workspace._count.documents,
         };
       }
     } catch (error: unknown) {
@@ -443,6 +457,7 @@ export class WorkspaceService {
           _count: {
             select: {
               members: true,
+              documents: true,
             },
           },
         },
@@ -459,6 +474,7 @@ export class WorkspaceService {
         createdAt: updatedWorkspace.createdAt,
         updatedAt: updatedWorkspace.updatedAt,
         memberCount: updatedWorkspace._count.members,
+        documentCount: updatedWorkspace._count.documents,
       };
     } catch (error: unknown) {
       if (error instanceof NotFoundException || error instanceof BadRequestException) {
@@ -564,6 +580,7 @@ export class WorkspaceService {
           _count: {
             select: {
               members: true,
+              documents: true,
             },
           },
           documents: {
@@ -598,6 +615,7 @@ export class WorkspaceService {
           createdAt: workspace.createdAt,
           updatedAt: workspace.updatedAt,
           memberCount: workspace._count.members,
+          documentCount: workspace._count.documents,
           activityTimestamp,
         };
       });
