@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Body, Param, UseGuards } from '@nestjs/common';
+import { Controller, Get, Post, Body, Param, UseGuards, Patch } from '@nestjs/common';
 import { DocumentResultService } from './document-result.service';
 import { CreateDocumentResultDto } from './dto/create-document-result.dto';
 import { DocumentResultResponseDto } from './dto/document-result-response.dto';
@@ -64,5 +64,24 @@ export class DocumentResultController {
   @ApiResponse({ status: 404, description: 'Document result not found' })
   async getById(@Param('id') id: string): Promise<DocumentResultResponseDto> {
     return this.documentResultService.getDocumentResultById(id);
+  }
+
+  @Patch(':id/status')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @ApiBearerAuth()
+  @Roles(USER_ROLES.ADMIN, USER_ROLES.USER)
+  @ApiOperation({ summary: 'Update document result status' })
+  @ApiParam({ name: 'id', description: 'Document result ID' })
+  @ApiResponse({
+    status: 200,
+    description: 'Document result status updated successfully',
+    type: DocumentResultResponseDto,
+  })
+  @ApiResponse({ status: 404, description: 'Document result not found' })
+  async updateStatus(
+    @Param('id') id: string,
+    @Body() dto: { status: string; approvedById?: string },
+  ): Promise<DocumentResultResponseDto> {
+    return this.documentResultService.updateDocumentResultStatus(id, dto.status, dto.approvedById);
   }
 }

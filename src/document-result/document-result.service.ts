@@ -69,6 +69,10 @@ export class DocumentResultService {
             csvUrl: true,
             createdAt: true,
             summary: true,
+            status: true,
+            reviewedAt: true,
+            approvedAt: true,
+            approvedById: true,
           },
         });
 
@@ -175,6 +179,10 @@ export class DocumentResultService {
           csvUrl: true,
           createdAt: true,
           summary: true,
+          status: true,
+          reviewedAt: true,
+          approvedAt: true,
+          approvedById: true,
           items: {
             select: {
               id: true,
@@ -223,6 +231,10 @@ export class DocumentResultService {
           csvUrl: true,
           createdAt: true,
           summary: true,
+          status: true,
+          reviewedAt: true,
+          approvedAt: true,
+          approvedById: true,
           items: {
             select: {
               id: true,
@@ -257,6 +269,85 @@ export class DocumentResultService {
         getErrorStack(error),
       );
       throw new InternalServerErrorException('Failed to fetch document result');
+    }
+  }
+
+  async updateDocumentResultStatus(
+    id: string,
+    status: string,
+    approvedById?: string,
+  ): Promise<DocumentResultResponseDto> {
+    try {
+      const updateData: {
+        status: string;
+        reviewedAt?: Date;
+        approvedAt?: Date;
+        approvedById?: string;
+      } = {
+        status,
+      };
+
+      // Set timestamps based on status
+      if (status === 'reviewed') {
+        updateData.reviewedAt = new Date();
+      } else if (status === 'approved') {
+        updateData.approvedAt = new Date();
+        if (approvedById) {
+          updateData.approvedById = approvedById;
+        }
+      }
+
+      const result = await this.prisma.documentResult.update({
+        where: { id },
+        data: updateData as any,
+        select: {
+          id: true,
+          jobId: true,
+          jsonUrl: true,
+          csvUrl: true,
+          createdAt: true,
+          summary: true,
+          status: true,
+          reviewedAt: true,
+          approvedAt: true,
+          approvedById: true,
+          items: {
+            select: {
+              id: true,
+              resultId: true,
+              name: true,
+              quantity: true,
+              unitPrice: true,
+              total: true,
+              tax: true,
+              createdAt: true,
+            },
+            orderBy: { createdAt: 'asc' },
+          },
+        },
+      });
+
+      this.logger.log(`Document result ${id} status updated to ${status}`);
+
+      return {
+        ...result,
+        summary: result.summary as Record<string, any> | null,
+      } as DocumentResultResponseDto;
+    } catch (error: unknown) {
+      if (error instanceof NotFoundException) {
+        throw error;
+      }
+
+      const errorCode = getPrismaErrorCode(error);
+      if (errorCode === 'P2025') {
+        throw new NotFoundException(`Document result with ID ${id} not found`);
+      }
+
+      this.logger.error(
+        `Failed to update document result status ${id}: ${getErrorMessage(error)}`,
+        getErrorStack(error),
+      );
+      throw new InternalServerErrorException('Failed to update document result status');
     }
   }
 }

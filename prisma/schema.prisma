@@ -30,6 +30,7 @@ model User {
   Upload    Upload[]
 
   WorkspaceMember WorkspaceMember[]
+  approvedDocumentResults DocumentResult[] @relation("ApprovedBy")
 }
 
 model Company {
@@ -162,6 +163,13 @@ model DocumentResult {
   createdAt DateTime      @default(now())
   summary   Json?
   items     InvoiceItem[]
+
+  // Review and approval workflow
+  status       DocumentResultStatus @default(draft)
+  reviewedAt   DateTime?
+  approvedAt   DateTime?
+  approvedById String?
+  approvedBy   User?                @relation("ApprovedBy", fields: [approvedById], references: [id])
 }
 
 model InvoiceItem {
@@ -245,3 +253,9 @@ enum TokenTransactionType {
 }
 
 // OwnerType is now represented as Int: 0=USER, 1=COMPANY
+
+enum DocumentResultStatus {
+  draft
+  reviewed
+  approved
+}
