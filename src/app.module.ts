@@ -9,6 +9,7 @@ import { WorkspaceModule } from './workspace/workspace.module';
 import { DocumentModule } from './document/document.module';
 import { JobModule } from './job/job.module';
 import { AuthModule } from './auth/auth.module';
+import { DocumentResultModule } from './document-result/document-result.module';
 
 @Module({
   imports: [
@@ -20,6 +21,7 @@ import { AuthModule } from './auth/auth.module';
     DocumentModule,
     JobModule,
     AuthModule,
+    DocumentResultModule,
   ],
   controllers: [AppController],
   providers: [AppService],
