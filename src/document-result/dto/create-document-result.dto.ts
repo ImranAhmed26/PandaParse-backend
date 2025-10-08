@@ -1,5 +1,5 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { IsString, IsOptional, IsObject, IsArray, ValidateNested } from 'class-validator';
+import { IsString, IsOptional, IsObject, IsArray, ValidateNested, IsBoolean } from 'class-validator';
 import { Type } from 'class-transformer';
 import { InvoiceItemDto } from './invoice-item.dto';
 
@@ -7,6 +7,13 @@ export class CreateDocumentResultDto {
   @ApiProperty({ description: 'Job ID this result belongs to' })
   @IsString()
   jobId!: string;
+
+  @ApiProperty({ 
+    description: 'Whether the document was successfully processed. If false, document status will be set to FLAGGED and no result record will be created.',
+    example: true 
+  })
+  @IsBoolean()
+  documentProcessed!: boolean;
 
   @ApiPropertyOptional({ description: 'S3 URL/key to parsed JSON' })
   @IsString()

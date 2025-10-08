@@ -10,6 +10,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { CreateDocumentResultDto } from './dto/create-document-result.dto';
 import { DocumentResultResponseDto } from './dto/document-result-response.dto';
 import { getErrorMessage, getErrorStack, getPrismaErrorCode } from 'src/common/types/error.types';
+import { DocumentStatus } from '@prisma/client';
 
 @Injectable()
 export class DocumentResultService {
@@ -17,12 +18,15 @@ export class DocumentResultService {
 
   constructor(private prisma: PrismaService) {}
 
-  async createDocumentResult(data: CreateDocumentResultDto): Promise<DocumentResultResponseDto> {
+  async createDocumentResult(
+    data: CreateDocumentResultDto,
+  ): Promise<DocumentResultResponseDto | null> {
     const operationId = `create-result-${Date.now()}`;
 
-    this.logger.log(`Creating document result for job ${data.jobId}`, {
+    this.logger.log(`Processing document result for job ${data.jobId}`, {
       operationId,
       jobId: data.jobId,
+      documentProcessed: data.documentProcessed,
       hasJsonUrl: !!data.jsonUrl,
       hasCsvUrl: !!data.csvUrl,
       hasSummary: !!data.summary,
@@ -30,7 +34,7 @@ export class DocumentResultService {
     });
 
     try {
-      // Verify job exists and doesn't already have a result
+      // Verify job exists and get associated document
       const job = await this.prisma.job.findUnique({
         where: { id: data.jobId },
         select: {
@@ -39,6 +43,17 @@ export class DocumentResultService {
           result: {
             select: { id: true },
           },
+          upload: {
+            select: {
+              id: true,
+              document: {
+                select: {
+                  id: true,
+                  status: true,
+                },
+              },
+            },
+          },
         },
       });
 
@@ -46,13 +61,41 @@ export class DocumentResultService {
         throw new NotFoundException(`Job with ID ${data.jobId} not found`);
       }
 
+      // Get the document associated with this job
+      const document = job.upload?.document;
+      if (!document) {
+        throw new NotFoundException(`No document found for job ${data.jobId}`);
+      }
+
+      // Handle based on documentProcessed flag
+      if (!data.documentProcessed) {
+        // Document processing failed - update document status to FLAGGED
+        await this.prisma.document.update({
+          where: { id: document.id },
+          data: { status: DocumentStatus.FLAGGED },
+        });
+
+        this.logger.log(
+          `Document ${document.id} status updated to FLAGGED (job ${data.jobId} failed processing)`,
+          {
+            operationId,
+            documentId: document.id,
+            jobId: data.jobId,
+          },
+        );
+
+        // Return null to indicate no result was created
+        return null;
+      }
+
+      // Document processed successfully - check if result already exists
       if (job.result) {
         throw new ConflictException(
           `Job ${data.jobId} already has a document result (ID: ${job.result.id})`,
         );
       }
 
-      // Create DocumentResult and InvoiceItems in a transaction
+      // Create DocumentResult, InvoiceItems, and update Document status in a transaction
       const result = await this.prisma.$transaction(async tx => {
         // Create DocumentResult
         const documentResult = await tx.documentResult.create({
@@ -119,6 +162,18 @@ export class DocumentResultService {
             itemCount: items.length,
           });
         }
+
+        // Update document status to PROCESSED
+        await tx.document.update({
+          where: { id: document.id },
+          data: { status: DocumentStatus.PROCESSED },
+        });
+
+        this.logger.debug(`Document ${document.id} status updated to PROCESSED`, {
+          operationId,
+          documentId: document.id,
+          jobId: data.jobId,
+        });
 
         return {
           ...documentResult,

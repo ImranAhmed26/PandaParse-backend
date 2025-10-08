@@ -19,18 +19,32 @@ export class DocumentResultController {
   @UseGuards(InternalApiGuard)
   @ApiOperation({
     summary: 'Create document result (Internal - Lambda only)',
-    description: 'Called by Lambda after parsing raw OCR data to store structured results',
+    description:
+      'Called by Lambda after parsing raw OCR data to store structured results. If documentProcessed is false, updates document status to FLAGGED without creating a result.',
   })
   @ApiResponse({
     status: 201,
-    description: 'Document result created successfully',
+    description: 'Document result created successfully or document flagged',
     type: DocumentResultResponseDto,
   })
   @ApiResponse({ status: 400, description: 'Invalid data or job not found' })
   @ApiResponse({ status: 401, description: 'Invalid internal API key' })
+  @ApiResponse({ status: 404, description: 'Job or document not found' })
   @ApiResponse({ status: 409, description: 'Result already exists for this job' })
-  async createInternal(@Body() dto: CreateDocumentResultDto): Promise<DocumentResultResponseDto> {
-    return this.documentResultService.createDocumentResult(dto);
+  async createInternal(
+    @Body() dto: CreateDocumentResultDto,
+  ): Promise<DocumentResultResponseDto | { message: string; documentStatus: string }> {
+    const result = await this.documentResultService.createDocumentResult(dto);
+
+    // If result is null, document was flagged (processing failed)
+    if (result === null) {
+      return {
+        message: 'Document processing failed. Document status updated to FLAGGED.',
+        documentStatus: 'FLAGGED',
+      };
+    }
+
+    return result;
   }
 
   // User-facing endpoints
