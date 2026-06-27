@@ -18,10 +18,21 @@ async function bootstrap() {
     process.exit(1);
   }
 
-  app.enableCors({
-    origin: allowedOrigin,
-    credentials: true,
-  });
+app.enableCors({
+  origin: (origin: string | undefined, callback: (err: Error | null, allow?: boolean) => void) => {
+    const allowedOrigins = configService
+      .get<string>('FRONTEND_URL')!
+      .split(',')
+      .map(o => o.trim());
+    
+    if (!origin || allowedOrigins.includes(origin)) {
+      callback(null, true);
+    } else {
+      callback(new Error(`CORS: origin ${origin} not allowed`));
+    }
+  },
+  credentials: true,
+});
 
   // ✅ Global API prefix
   const apiPrefix = configService.get<string>('API_PREFIX') || 'api';
