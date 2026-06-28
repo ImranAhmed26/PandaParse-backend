@@ -9,35 +9,35 @@ async function bootstrap() {
 
   // ✅ CORS CONFIGURATION
   const isProduction = configService.get<string>('NODE_ENV') === 'production';
-  const allowedOrigin = isProduction
-    ? configService.get<string>('FRONTEND_URL')!
-    : 'http://localhost:3000';
+  const frontendUrl = configService.get<string>('FRONTEND_URL');
 
-  if (isProduction && !allowedOrigin) {
+  if (isProduction && !frontendUrl) {
     console.error('CORS ERROR: ❌ FRONTEND_URL is not set in production!');
     process.exit(1);
   }
 
-app.enableCors({
-  origin: (origin: string | undefined, callback: (err: Error | null, allow?: boolean) => void) => {
-    const allowedOrigins = configService
-      .get<string>('FRONTEND_URL')!
-      .split(',')
-      .map(o => o.trim());
-    
-    if (!origin || allowedOrigins.includes(origin)) {
-      callback(null, true);
-    } else {
-      callback(new Error(`CORS: origin ${origin} not allowed`));
-    }
-  },
-  credentials: true,
-});
+  const allowedOrigins: string[] = frontendUrl
+    ? frontendUrl.split(',').map(o => o.trim())
+    : [];
+
+  if (!isProduction) {
+    allowedOrigins.push('http://localhost:3210');
+  }
+
+  app.enableCors({
+    origin: (origin: string | undefined, callback: (err: Error | null, allow?: boolean) => void) => {
+      if (!origin || allowedOrigins.includes(origin)) {
+        callback(null, true);
+      } else {
+        callback(new Error(`CORS: origin ${origin} not allowed`));
+      }
+    },
+    credentials: true,
+  });
 
   // ✅ Global API prefix
   const apiPrefix = configService.get<string>('API_PREFIX') || 'api';
 
-  // Validate API prefix format (no leading or trailing slashes)
   if (apiPrefix.startsWith('/') || apiPrefix.endsWith('/')) {
     console.warn('⚠️ API_PREFIX should not contain leading or trailing slashes. Trimming...');
     const trimmedPrefix = apiPrefix.replace(/^\/+|\/+$/g, '');
