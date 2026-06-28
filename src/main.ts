@@ -3,6 +3,15 @@ import { AppModule } from './app.module';
 import { ConfigService } from '@nestjs/config';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 
+// ---- DEV ONLY: allow local network access on port 3210 ----
+// TODO: remove this block when no longer needed
+const LOCAL_NETWORK_PORT = 3210;
+const LOCAL_NETWORK_REGEX = new RegExp(
+  `^http:\\/\\/(192\\.168\\.\\d+\\.\\d+|10\\.\\d+\\.\\d+\\.\\d+|172\\.(1[6-9]|2\\d|3[01])\\.\\d+\\.\\d+):${LOCAL_NETWORK_PORT}$`
+);
+const isLocalNetworkOrigin = (origin: string): boolean => LOCAL_NETWORK_REGEX.test(origin);
+// ---- END DEV ONLY ----
+
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
   const configService = app.get(ConfigService);
@@ -28,6 +37,10 @@ async function bootstrap() {
     origin: (origin: string | undefined, callback: (err: Error | null, allow?: boolean) => void) => {
       if (!origin || allowedOrigins.includes(origin)) {
         callback(null, true);
+      // ---- DEV ONLY: remove this block when no longer needed ----
+      } else if (!isProduction && isLocalNetworkOrigin(origin)) {
+        callback(null, true);
+      // ---- END DEV ONLY ----
       } else {
         callback(new Error(`CORS: origin ${origin} not allowed`));
       }
