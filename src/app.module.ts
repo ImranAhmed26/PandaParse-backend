@@ -9,6 +9,7 @@ import { WorkspaceModule } from './workspace/workspace.module';
 import { DocumentModule } from './document/document.module';
 import { JobModule } from './job/job.module';
 import { AuthModule } from './auth/auth.module';
+import { ScheduleModule } from '@nestjs/schedule';
 import { DocumentResultModule } from './document-result/document-result.module';
 
 @Module({
@@ -22,6 +23,7 @@ import { DocumentResultModule } from './document-result/document-result.module';
     JobModule,
     AuthModule,
     DocumentResultModule,
+    ScheduleModule.forRoot(),
   ],
   controllers: [AppController],
   providers: [AppService],

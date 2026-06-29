@@ -10,6 +10,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { getErrorMessage, getErrorStack, getPrismaErrorCode } from 'src/common/types/error.types';
 import { JwtPayload } from 'src/auth/interfaces/jwt-payload.interfaces';
 import { JobStatus, DocumentType } from '@prisma/client';
+import { Cron, CronExpression } from '@nestjs/schedule';
 
 export interface CreateJobDto {
   uploadId: string;
@@ -557,6 +558,48 @@ export class JobService {
         stack: getErrorStack(error),
       });
       throw new InternalServerErrorException('Failed to fetch user jobs');
+    }
+  }
+
+  // Add inside JobService class:
+
+  @Cron(CronExpression.EVERY_5_MINUTES)
+  async cleanupStuckJobs(): Promise<void> {
+    const timeoutMinutes = 15;
+    const cutoff = new Date(Date.now() - timeoutMinutes * 60 * 1000);
+
+    try {
+      const stuckJobs = await this.prisma.job.findMany({
+        where: {
+          status: { in: [JobStatus.pending, JobStatus.processing] },
+          startedAt: { lt: cutoff },
+        },
+        select: { id: true, status: true, startedAt: true },
+      });
+
+      if (stuckJobs.length === 0) return;
+
+      this.logger.warn(`Found ${stuckJobs.length} stuck job(s) — marking as failed`);
+
+      await this.prisma.job.updateMany({
+        where: {
+          id: { in: stuckJobs.map(j => j.id) },
+        },
+        data: {
+          status: JobStatus.failed,
+          errorMessage: `Job timed out after ${timeoutMinutes} minutes with no completion`,
+          errorCode: 'JOB_TIMEOUT',
+          completedAt: new Date(),
+        },
+      });
+
+      this.logger.warn(
+        `Marked ${stuckJobs.length} stuck job(s) as failed: ${stuckJobs.map(j => j.id).join(', ')}`,
+      );
+    } catch (error: unknown) {
+      this.logger.error(`Failed to cleanup stuck jobs: ${getErrorMessage(error)}`, {
+        stack: getErrorStack(error),
+      });
     }
   }
 }
