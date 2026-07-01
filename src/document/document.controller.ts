@@ -1,8 +1,8 @@
-import { Controller, Get, Post, Body, Param, UseGuards, Patch, Delete } from '@nestjs/common';
-import { DocumentService, CreateDocumentDto, DocumentResponseDto } from './document.service';
+import { Controller, Get, Post, Body, Param, UseGuards, Patch, Delete, Query, ParseIntPipe } from '@nestjs/common';
+import { DocumentService, CreateDocumentDto, DocumentResponseDto, PaginatedDocumentsResponseDto } from './document.service';
 import { BulkDeleteDocumentsDto } from './dto/bulk-delete-documents.dto';
 import { DocumentDeletionPreviewDto } from './dto/document-deletion-preview.dto';
-import { ApiBearerAuth, ApiOperation, ApiResponse, ApiTags, ApiParam } from '@nestjs/swagger';
+import { ApiBearerAuth, ApiOperation, ApiQuery, ApiResponse, ApiTags, ApiParam } from '@nestjs/swagger';
 import { JwtAuthGuard } from 'src/auth/guards/jwt-auth.guard';
 import { RolesGuard } from 'src/auth/guards/roles.guard';
 import { InternalApiGuard } from 'src/auth/guards/internal-api.guard';
@@ -54,26 +54,37 @@ export class DocumentController {
   @Get('workspace/:workspaceId')
   @UseGuards(RolesGuard)
   @Roles(USER_ROLES.ADMIN, USER_ROLES.USER)
-  @ApiOperation({ summary: 'Get all documents in a workspace' })
+  @ApiOperation({ summary: 'Get documents in a workspace (paginated)' })
   @ApiParam({ name: 'workspaceId', description: 'Workspace ID' })
+  @ApiQuery({ name: 'page', required: false, description: 'Page number (default: 1)' })
+  @ApiQuery({ name: 'limit', required: false, description: 'Items per page (default: 20)' })
   @ApiResponse({
     status: 200,
-    description: 'Return documents in the workspace.',
+    description: 'Return paginated documents in the workspace.',
     schema: {
-      type: 'array',
-      items: {
-        type: 'object',
-        properties: {
-          id: { type: 'string' },
-          fileName: { type: 'string' },
-          documentUrl: { type: 'string' },
-          type: { type: 'string', enum: Object.values(DocumentType) },
-          status: { type: 'string', enum: Object.values(DocumentStatus) },
-          uploadId: { type: 'string' },
-          userId: { type: 'string' },
-          createdAt: { type: 'string', format: 'date-time' },
-          updatedAt: { type: 'string', format: 'date-time' },
+      type: 'object',
+      properties: {
+        data: {
+          type: 'array',
+          items: {
+            type: 'object',
+            properties: {
+              id: { type: 'string' },
+              fileName: { type: 'string' },
+              documentUrl: { type: 'string' },
+              type: { type: 'string', enum: Object.values(DocumentType) },
+              status: { type: 'string', enum: Object.values(DocumentStatus) },
+              uploadId: { type: 'string' },
+              userId: { type: 'string' },
+              createdAt: { type: 'string', format: 'date-time' },
+              updatedAt: { type: 'string', format: 'date-time' },
+            },
+          },
         },
+        total: { type: 'number' },
+        page: { type: 'number' },
+        limit: { type: 'number' },
+        totalPages: { type: 'number' },
       },
     },
   })
@@ -82,8 +93,10 @@ export class DocumentController {
   findByWorkspace(
     @Param('workspaceId') workspaceId: string,
     @CurrentUser() user: JwtPayload,
-  ): Promise<DocumentResponseDto[]> {
-    return this.documentService.getDocumentsByWorkspace(workspaceId, user);
+    @Query('page', new ParseIntPipe({ optional: true })) page: number = 1,
+    @Query('limit', new ParseIntPipe({ optional: true })) limit: number = 20,
+  ): Promise<PaginatedDocumentsResponseDto> {
+    return this.documentService.getDocumentsByWorkspace(workspaceId, user, page, limit);
   }
 
   @Delete('workspace/:workspaceId')
