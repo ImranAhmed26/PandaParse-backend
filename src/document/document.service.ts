@@ -33,6 +33,14 @@ export interface DocumentResponseDto {
   updatedAt: Date;
 }
 
+export interface PaginatedDocumentsResponseDto {
+  data: DocumentResponseDto[];
+  total: number;
+  page: number;
+  limit: number;
+  totalPages: number;
+}
+
 @Injectable()
 export class DocumentService {
   private readonly logger = new Logger(DocumentService.name);
@@ -131,34 +139,52 @@ export class DocumentService {
   async getDocumentsByWorkspace(
     workspaceId: string,
     user: JwtPayload,
-  ): Promise<DocumentResponseDto[]> {
+    page: number = 1,
+    limit: number = 20,
+  ): Promise<PaginatedDocumentsResponseDto> {
     try {
       // Verify workspace access
       await this.validateWorkspaceAccess(workspaceId, user);
 
-      const documents = await this.prisma.document.findMany({
-        where: {
-          workspace: {
-            some: {
-              workspaceId: workspaceId,
-            },
+      const skip = (page - 1) * limit;
+      const where = {
+        workspace: {
+          some: {
+            workspaceId: workspaceId,
           },
         },
-        select: {
-          id: true,
-          fileName: true,
-          documentUrl: true,
-          type: true,
-          status: true,
-          uploadId: true,
-          userId: true,
-          createdAt: true,
-          updatedAt: true,
-        },
-        orderBy: { createdAt: 'desc' },
-      });
+      };
 
-      return documents;
+      const [documents, total] = await Promise.all([
+        this.prisma.document.findMany({
+          where,
+          skip,
+          take: limit,
+          select: {
+            id: true,
+            fileName: true,
+            documentUrl: true,
+            type: true,
+            status: true,
+            uploadId: true,
+            userId: true,
+            createdAt: true,
+            updatedAt: true,
+          },
+          orderBy: { createdAt: 'desc' },
+        }),
+        this.prisma.document.count({ where }),
+      ]);
+
+      const totalPages = Math.ceil(total / limit);
+
+      return {
+        data: documents,
+        total,
+        page,
+        limit,
+        totalPages,
+      };
     } catch (error: unknown) {
       if (error instanceof ForbiddenException || error instanceof NotFoundException) {
         throw error;
