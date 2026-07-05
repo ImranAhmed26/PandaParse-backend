@@ -8,6 +8,7 @@ import {
 } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateDocumentResultDto } from './dto/create-document-result.dto';
+import { UpdateDocumentResultDto } from './dto/update-document-result.dto';
 import { DocumentResultResponseDto } from './dto/document-result-response.dto';
 import { getErrorMessage, getErrorStack, getPrismaErrorCode } from 'src/common/types/error.types';
 import { DocumentStatus } from '@prisma/client';
@@ -324,6 +325,103 @@ export class DocumentResultService {
         getErrorStack(error),
       );
       throw new InternalServerErrorException('Failed to fetch document result');
+    }
+  }
+
+  /**
+   * Edit a document result from the Document Editor. Updates `summary` and/or fully
+   * replaces line `items` in a single transaction. Only provided fields are changed.
+   */
+  async updateDocumentResult(
+    id: string,
+    dto: UpdateDocumentResultDto,
+  ): Promise<DocumentResultResponseDto> {
+    try {
+      const existing = await this.prisma.documentResult.findUnique({
+        where: { id },
+        select: { id: true },
+      });
+
+      if (!existing) {
+        throw new NotFoundException(`Document result with ID ${id} not found`);
+      }
+
+      const result = await this.prisma.$transaction(async tx => {
+        if (dto.summary !== undefined) {
+          await tx.documentResult.update({
+            where: { id },
+            data: { summary: dto.summary as any },
+          });
+        }
+
+        if (dto.items !== undefined) {
+          // Replace existing line items with the corrected set.
+          await tx.invoiceItem.deleteMany({ where: { resultId: id } });
+          if (dto.items.length > 0) {
+            await tx.invoiceItem.createMany({
+              data: dto.items.map(item => ({
+                resultId: id,
+                name: item.name,
+                quantity: item.quantity,
+                unitPrice: item.unitPrice,
+                total: item.total,
+                tax: item.tax,
+              })),
+            });
+          }
+        }
+
+        return tx.documentResult.findUniqueOrThrow({
+          where: { id },
+          select: {
+            id: true,
+            jobId: true,
+            jsonUrl: true,
+            csvUrl: true,
+            createdAt: true,
+            summary: true,
+            status: true,
+            reviewedAt: true,
+            approvedAt: true,
+            approvedById: true,
+            items: {
+              select: {
+                id: true,
+                resultId: true,
+                name: true,
+                quantity: true,
+                unitPrice: true,
+                total: true,
+                tax: true,
+                createdAt: true,
+              },
+              orderBy: { createdAt: 'asc' },
+            },
+          },
+        });
+      });
+
+      this.logger.log(`Document result ${id} updated (summary/items edited)`);
+
+      return {
+        ...result,
+        summary: result.summary as Record<string, any> | null,
+      } as DocumentResultResponseDto;
+    } catch (error: unknown) {
+      if (error instanceof NotFoundException) {
+        throw error;
+      }
+
+      const errorCode = getPrismaErrorCode(error);
+      if (errorCode === 'P2025') {
+        throw new NotFoundException(`Document result with ID ${id} not found`);
+      }
+
+      this.logger.error(
+        `Failed to update document result ${id}: ${getErrorMessage(error)}`,
+        getErrorStack(error),
+      );
+      throw new InternalServerErrorException('Failed to update document result');
     }
   }
 

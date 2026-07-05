@@ -1,5 +1,11 @@
 import { Controller, Get, Post, Body, Param, UseGuards, Patch, Delete, Query, ParseIntPipe } from '@nestjs/common';
-import { DocumentService, CreateDocumentDto, DocumentResponseDto, PaginatedDocumentsResponseDto } from './document.service';
+import {
+  DocumentService,
+  CreateDocumentDto,
+  DocumentResponseDto,
+  PaginatedDocumentsResponseDto,
+  DocumentOcrResponseDto,
+} from './document.service';
 import { BulkDeleteDocumentsDto } from './dto/bulk-delete-documents.dto';
 import { DocumentDeletionPreviewDto } from './dto/document-deletion-preview.dto';
 import { ApiBearerAuth, ApiOperation, ApiQuery, ApiResponse, ApiTags, ApiParam } from '@nestjs/swagger';
@@ -141,6 +147,26 @@ export class DocumentController {
   @ApiResponse({ status: 404, description: 'Document not found.' })
   findById(@Param('id') id: string, @CurrentUser() user: JwtPayload): Promise<DocumentResponseDto> {
     return this.documentService.getDocumentById(id, user);
+  }
+
+  @Get(':id/ocr')
+  @UseGuards(RolesGuard)
+  @Roles(USER_ROLES.ADMIN, USER_ROLES.USER)
+  @ApiOperation({
+    summary: 'Get bundled editor payload (file URL + OCR result + parsed data)',
+    description:
+      'Returns a presigned file URL, the editable document result (summary + line items), ' +
+      'and the raw parsed Textract JSON with bounding boxes. Powers the Document Editor.',
+  })
+  @ApiParam({ name: 'id', description: 'Document ID' })
+  @ApiResponse({ status: 200, description: 'Bundled document OCR payload.' })
+  @ApiResponse({ status: 403, description: 'Access denied to document.' })
+  @ApiResponse({ status: 404, description: 'Document not found.' })
+  getDocumentOcr(
+    @Param('id') id: string,
+    @CurrentUser() user: JwtPayload,
+  ): Promise<DocumentOcrResponseDto> {
+    return this.documentService.getDocumentOcr(id, user);
   }
 
   @Patch(':id/status')

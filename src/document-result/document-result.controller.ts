@@ -1,6 +1,7 @@
 import { Controller, Get, Post, Body, Param, UseGuards, Patch } from '@nestjs/common';
 import { DocumentResultService } from './document-result.service';
 import { CreateDocumentResultDto } from './dto/create-document-result.dto';
+import { UpdateDocumentResultDto } from './dto/update-document-result.dto';
 import { DocumentResultResponseDto } from './dto/document-result-response.dto';
 import { ApiBearerAuth, ApiOperation, ApiResponse, ApiTags, ApiParam } from '@nestjs/swagger';
 import { JwtAuthGuard } from 'src/auth/guards/jwt-auth.guard';
@@ -78,6 +79,30 @@ export class DocumentResultController {
   @ApiResponse({ status: 404, description: 'Document result not found' })
   async getById(@Param('id') id: string): Promise<DocumentResultResponseDto> {
     return this.documentResultService.getDocumentResultById(id);
+  }
+
+  @Patch(':id')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @ApiBearerAuth()
+  @Roles(USER_ROLES.ADMIN, USER_ROLES.USER)
+  @ApiOperation({
+    summary: 'Edit document result (correct summary / line items)',
+    description:
+      'Persists corrections made in the Document Editor. Provided fields replace stored ' +
+      'values; items (when provided) fully replace the existing line items.',
+  })
+  @ApiParam({ name: 'id', description: 'Document result ID' })
+  @ApiResponse({
+    status: 200,
+    description: 'Document result updated successfully',
+    type: DocumentResultResponseDto,
+  })
+  @ApiResponse({ status: 404, description: 'Document result not found' })
+  async update(
+    @Param('id') id: string,
+    @Body() dto: UpdateDocumentResultDto,
+  ): Promise<DocumentResultResponseDto> {
+    return this.documentResultService.updateDocumentResult(id, dto);
   }
 
   @Patch(':id/status')
