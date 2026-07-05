@@ -12,6 +12,7 @@ import { JwtPayload } from 'src/auth/interfaces/jwt-payload.interfaces';
 import { DocumentType, DocumentStatus } from '@prisma/client';
 import { OWNER_TYPES } from 'src/common/constants/enums';
 import { DocumentDeletionPreviewDto } from './dto/document-deletion-preview.dto';
+import { S3ObjectService } from '../aws/s3-object/s3-object.service';
 
 export interface CreateDocumentDto {
   uploadId: string;
@@ -41,11 +42,49 @@ export interface PaginatedDocumentsResponseDto {
   totalPages: number;
 }
 
+export interface DocumentOcrResultItemDto {
+  id: string;
+  name: string | null;
+  quantity: number | null;
+  unitPrice: number | null;
+  total: number | null;
+  tax: number | null;
+}
+
+export interface DocumentOcrResultDto {
+  id: string;
+  status: string;
+  summary: Record<string, any> | null;
+  items: DocumentOcrResultItemDto[];
+  reviewedAt: Date | null;
+  approvedAt: Date | null;
+}
+
+/**
+ * Bundled payload for the Document Editor: everything the editor needs in one call.
+ * `fileUrl` is a short-lived presigned GET; `result` is the editable DB-backed data;
+ * `parsed` is the raw Textract JSON (with bounding boxes) or null when unavailable.
+ */
+export interface DocumentOcrResponseDto {
+  document: {
+    id: string;
+    fileName: string;
+    type: DocumentType;
+    status: DocumentStatus;
+  };
+  fileUrl: string | null;
+  result: DocumentOcrResultDto | null;
+  parsed: unknown | null;
+}
+
 @Injectable()
 export class DocumentService {
   private readonly logger = new Logger(DocumentService.name);
 
-  constructor(private prisma: PrismaService) {}
+  constructor(
+    private prisma: PrismaService,
+    private readonly s3Object: S3ObjectService,
+  ) {}
 
   async createDocument(data: CreateDocumentDto, user: JwtPayload): Promise<DocumentResponseDto> {
     try {
@@ -318,6 +357,121 @@ export class DocumentService {
         getErrorStack(error),
       );
       throw new InternalServerErrorException('Failed to fetch document');
+    }
+  }
+
+  /**
+   * Bundled payload for the Document Editor: presigned file URL + editable result +
+   * raw parsed Textract JSON. Resolves the document -> upload -> job -> result chain
+   * server-side so the frontend never needs to know about uploadId/jobId plumbing.
+   */
+  async getDocumentOcr(documentId: string, user: JwtPayload): Promise<DocumentOcrResponseDto> {
+    try {
+      const document = await this.prisma.document.findUnique({
+        where: { id: documentId },
+        select: {
+          id: true,
+          fileName: true,
+          type: true,
+          status: true,
+          userId: true,
+          workspace: { select: { workspaceId: true } },
+          upload: {
+            select: {
+              key: true,
+              job: {
+                select: {
+                  id: true,
+                  ocrJsonUrl: true,
+                  result: {
+                    select: {
+                      id: true,
+                      status: true,
+                      summary: true,
+                      reviewedAt: true,
+                      approvedAt: true,
+                      items: {
+                        select: {
+                          id: true,
+                          name: true,
+                          quantity: true,
+                          unitPrice: true,
+                          total: true,
+                          tax: true,
+                        },
+                        orderBy: { createdAt: 'asc' },
+                      },
+                    },
+                  },
+                },
+              },
+            },
+          },
+        },
+      });
+
+      if (!document) {
+        throw new NotFoundException(`Document with ID ${documentId} not found`);
+      }
+
+      // Access check: owner, admin, or a member of any workspace the document is in.
+      const isOwnerOrAdmin = document.userId === user.sub || user.role === 0;
+      if (!isOwnerOrAdmin) {
+        let hasAccess = false;
+        for (const ws of document.workspace) {
+          try {
+            await this.validateWorkspaceAccess(ws.workspaceId, user);
+            hasAccess = true;
+            break;
+          } catch {
+            // Try the next workspace association.
+          }
+        }
+        if (!hasAccess) {
+          throw new ForbiddenException('Access denied to this document');
+        }
+      }
+
+      const key = document.upload?.key;
+      const job = document.upload?.job;
+
+      const [fileUrl, parsed] = await Promise.all([
+        key ? this.s3Object.getDownloadUrl(key) : Promise.resolve(null),
+        job?.ocrJsonUrl ? this.s3Object.getJson(job.ocrJsonUrl) : Promise.resolve(null),
+      ]);
+
+      const result: DocumentOcrResultDto | null = job?.result
+        ? {
+            id: job.result.id,
+            status: job.result.status,
+            summary: job.result.summary as Record<string, any> | null,
+            items: job.result.items,
+            reviewedAt: job.result.reviewedAt,
+            approvedAt: job.result.approvedAt,
+          }
+        : null;
+
+      return {
+        document: {
+          id: document.id,
+          fileName: document.fileName,
+          type: document.type,
+          status: document.status,
+        },
+        fileUrl,
+        result,
+        parsed,
+      };
+    } catch (error: unknown) {
+      if (error instanceof NotFoundException || error instanceof ForbiddenException) {
+        throw error;
+      }
+
+      this.logger.error(
+        `Failed to fetch document OCR payload: ${getErrorMessage(error)}`,
+        getErrorStack(error),
+      );
+      throw new InternalServerErrorException('Failed to fetch document OCR payload');
     }
   }
 
