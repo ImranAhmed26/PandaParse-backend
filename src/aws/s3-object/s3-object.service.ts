@@ -19,15 +19,19 @@ export class S3ObjectService {
   private readonly downloadUrlTtl = 900; // 15 minutes
 
   constructor(private readonly config: ConfigService) {
+    // Trim env values: a stray space or CRLF newline in a bucket name makes the AWS
+    // SDK treat it as an ARN and throw "Invalid ARN", which is hard to diagnose.
+    const env = (key: string) => (this.config.get<string>(key) ?? '').trim();
+
     this.s3 = new S3Client({
-      region: this.config.get<string>('AWS_REGION') as string,
+      region: env('AWS_REGION'),
       credentials: {
-        accessKeyId: this.config.get<string>('AWS_ACCESS_KEY_ID') as string,
-        secretAccessKey: this.config.get<string>('AWS_SECRET_ACCESS_KEY') as string,
+        accessKeyId: env('AWS_ACCESS_KEY_ID'),
+        secretAccessKey: env('AWS_SECRET_ACCESS_KEY'),
       },
     });
-    this.inputBucket = this.config.get<string>('S3_BUCKET_NAME') as string;
-    this.outputBucket = this.config.get<string>('TEXTRACT_OUTPUT_BUCKET') as string;
+    this.inputBucket = env('S3_BUCKET_NAME');
+    this.outputBucket = env('TEXTRACT_OUTPUT_BUCKET');
   }
 
   /**
