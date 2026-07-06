@@ -381,12 +381,11 @@ export class DocumentService {
               key: true,
               job: {
                 select: {
-                  id: true,
-                  ocrJsonUrl: true,
                   result: {
                     select: {
                       id: true,
                       status: true,
+                      jsonUrl: true,
                       summary: true,
                       reviewedAt: true,
                       approvedAt: true,
@@ -435,9 +434,13 @@ export class DocumentService {
       const key = document.upload?.key;
       const job = document.upload?.job;
 
+      // DocumentResult.jsonUrl is the canonical location of the parsed-JSON S3 key
+      // (written by createDocumentResult) — the single source of truth.
+      const ocrKey = job?.result?.jsonUrl ?? null;
+
       const [fileUrl, parsed] = await Promise.all([
         key ? this.s3Object.getDownloadUrl(key) : Promise.resolve(null),
-        job?.ocrJsonUrl ? this.s3Object.getJson(job.ocrJsonUrl) : Promise.resolve(null),
+        ocrKey ? this.s3Object.getJson(ocrKey) : Promise.resolve(null),
       ]);
 
       const result: DocumentOcrResultDto | null = job?.result
