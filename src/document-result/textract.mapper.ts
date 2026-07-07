@@ -233,11 +233,15 @@ function normalizeInline(v: string | null): string | null {
 }
 
 /** Drop a leading name line from an address when it duplicates the entity name — Textract
- *  returns the whole postal block (name included) as the address. */
+ *  returns the whole postal block (name included) as the address. Also handles a labelled
+ *  first line like "Name: Acme Inc" where the value equals the entity name. */
 function stripLeadingName(address: string | null, name: string | null): string | null {
   if (!address || !name) return address;
   const lines = address.split(/\r?\n/);
-  if (lines.length > 1 && lines[0].trim() === name.trim()) {
+  if (lines.length < 2) return address;
+  // Strip an optional leading "Label: " (e.g. "Name:") before comparing to the name.
+  const firstLine = lines[0].trim().replace(/^[A-Za-z][A-Za-z ]{0,20}:\s*/, '');
+  if (firstLine === name.trim()) {
     return lines.slice(1).join('\n').trim() || address;
   }
   return address;
