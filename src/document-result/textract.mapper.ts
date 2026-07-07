@@ -135,7 +135,9 @@ const NUMERIC_TYPES = new Set<FieldDataType>([FieldDataType.CURRENCY, FieldDataT
  *  non-curated types (they stay in the raw S3 JSON only). */
 function resolveExpenseField(rawType: string, groupTypes: string[]): CanonicalDef | null {
   if (rawType === 'TAX_PAYER_ID') {
-    return groupTypes.includes('RECEIVER') ? CUSTOMER_TAX_ID : SUPPLIER_TAX_ID;
+    // Textract tags the customer party as RECEIVER, RECEIVER_BILL_TO, RECEIVER_SHIP_TO…
+    const isReceiver = groupTypes.some(t => t.toUpperCase().includes('RECEIVER'));
+    return isReceiver ? CUSTOMER_TAX_ID : SUPPLIER_TAX_ID;
   }
   return CANONICAL_FIELDS[rawType] ?? null;
 }
