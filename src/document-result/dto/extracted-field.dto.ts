@@ -37,6 +37,9 @@ export class ExtractedFieldResponseDto {
   @ApiPropertyOptional({ description: 'Current value (edited, or equal to detectedValue)' })
   value?: string | null;
 
+  @ApiPropertyOptional({ description: 'Parsed numeric value for CURRENCY/NUMBER fields' })
+  numericValue?: number | null;
+
   @ApiPropertyOptional({ description: 'Confidence of the detected value (0..100)' })
   confidence?: number | null;
 
