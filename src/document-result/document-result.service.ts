@@ -6,7 +6,7 @@ import {
   BadRequestException,
   ConflictException,
 } from '@nestjs/common';
-import { Prisma, FieldDataType } from '@prisma/client';
+import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { S3ObjectService } from '../aws/s3-object/s3-object.service';
 import { CreateDocumentResultDto } from './dto/create-document-result.dto';
@@ -14,10 +14,7 @@ import { UpdateDocumentResultDto } from './dto/update-document-result.dto';
 import { DocumentResultResponseDto } from './dto/document-result-response.dto';
 import { getErrorMessage, getErrorStack, getPrismaErrorCode } from 'src/common/types/error.types';
 import { DocumentStatus } from '@prisma/client';
-import { canonicalFieldDef, mapTextractResult, parseAmount } from './textract.mapper';
-
-// dataTypes whose edited value should be re-parsed into numericValue.
-const NUMERIC_TYPES = new Set<FieldDataType>([FieldDataType.CURRENCY, FieldDataType.NUMBER]);
+import { canonicalFieldDef, deriveNumericValue, mapTextractResult } from './textract.mapper';
 
 /** Shared select for returning a fully-populated result. */
 const RESULT_SELECT = {
@@ -313,8 +310,8 @@ export class DocumentResultService {
           const isEdited = value !== detected;
           const def = canonicalFieldDef(edit.key);
           const dataType = dataTypeByKey.get(edit.key) ?? def.dataType;
-          // Re-derive the stored numeric for money/number fields from the edited text.
-          const numericValue = NUMERIC_TYPES.has(dataType) ? parseAmount(value) : null;
+          // Re-derive the stored numeric (amount for money/number, epoch-ms for dates).
+          const numericValue = deriveNumericValue(dataType, value);
 
           await tx.extractedField.upsert({
             where: { resultId_key: { resultId: id, key: edit.key } },
