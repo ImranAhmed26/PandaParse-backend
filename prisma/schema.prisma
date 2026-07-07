@@ -158,11 +158,12 @@ model DocumentResult {
   job   Job    @relation(fields: [jobId], references: [id])
   jobId String @unique
 
-  jsonUrl   String? // S3 URL to parsed JSON
-  csvUrl    String? // S3 URL to parsed CSV
-  createdAt DateTime      @default(now())
-  summary   Json?
-  items     InvoiceItem[]
+  docType DocumentType // drives the canonical field schema (invoice / receipt / ...)
+  jsonUrl String? // S3 key to the raw Textract JSON (immutable archive)
+  csvUrl  String? // S3 key to CSV export
+
+  fields    ExtractedField[]
+  lineItems LineItem[]
 
   // Review and approval workflow
   status       DocumentResultStatus @default(draft)
@@ -170,19 +171,59 @@ model DocumentResult {
   approvedAt   DateTime?
   approvedById String?
   approvedBy   User?                @relation("ApprovedBy", fields: [approvedById], references: [id])
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 }
 
-model InvoiceItem {
+// One canonical header field (vendor, total, date, ...). Carries the original OCR
+// detection (detectedValue + confidence + box) and the current/corrected value.
+model ExtractedField {
   id       String         @id @default(uuid())
-  result   DocumentResult @relation(fields: [resultId], references: [id])
+  result   DocumentResult @relation(fields: [resultId], references: [id], onDelete: Cascade)
   resultId String
 
-  name      String?
-  quantity  Float?
-  unitPrice Float?
-  total     Float?
-  tax       Float?
+  key           String // canonical key, e.g. VENDOR_NAME, INVOICE_NUMBER, TOTAL
+  label         String?
+  dataType      FieldDataType @default(STRING)
+  detectedValue String? // original OCR value (immutable audit)
+  value         String? // current value (edited, or equal to detectedValue)
+  confidence    Float? // confidence of the detected value
+  page          Int           @default(1)
+  boundingBox   Json? // { left, top, width, height } normalized 0..1
+  isEdited      Boolean       @default(false)
+
   createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([resultId, key])
+  @@index([resultId])
+}
+
+// One line item (row). Typed columns hold the corrected/exportable values; `cells`
+// preserves the original per-cell OCR detail (value/confidence/box) for mapping.
+model LineItem {
+  id       String         @id @default(uuid())
+  result   DocumentResult @relation(fields: [resultId], references: [id], onDelete: Cascade)
+  resultId String
+
+  rowIndex    Int
+  description String?
+  quantity    Float?
+  unitPrice   Float?
+  amount      Float?
+  tax         Float?
+  productCode String?
+
+  boundingBox Json? // whole-row box (EXPENSE_ROW) for mapping
+  confidence  Float?
+  cells       Json? // { DESCRIPTION: { detectedValue, confidence, box }, ... }
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([resultId, rowIndex])
+  @@index([resultId])
 }
 
 model TokenBalance {
@@ -258,4 +299,11 @@ enum DocumentResultStatus {
   draft
   reviewed
   approved
+}
+
+enum FieldDataType {
+  STRING
+  NUMBER
+  DATE
+  CURRENCY
 }

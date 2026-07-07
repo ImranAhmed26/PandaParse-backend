@@ -86,10 +86,10 @@ export class DocumentResultController {
   @ApiBearerAuth()
   @Roles(USER_ROLES.ADMIN, USER_ROLES.USER)
   @ApiOperation({
-    summary: 'Edit document result (correct summary / line items)',
+    summary: 'Edit document result (correct fields / line items)',
     description:
-      'Persists corrections made in the Document Editor. Provided fields replace stored ' +
-      'values; items (when provided) fully replace the existing line items.',
+      'Persists corrections made in the Document Editor. `fields` upserts corrected values ' +
+      'by canonical key; `lineItems` (when provided) replaces the existing rows.',
   })
   @ApiParam({ name: 'id', description: 'Document result ID' })
   @ApiResponse({

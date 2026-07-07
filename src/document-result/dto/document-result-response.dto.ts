@@ -1,5 +1,7 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { InvoiceItemResponseDto } from './invoice-item.dto';
+import { DocumentType } from '@prisma/client';
+import { ExtractedFieldResponseDto } from './extracted-field.dto';
+import { LineItemResponseDto } from './line-item.dto';
 
 export enum DocumentResultStatus {
   draft = 'draft',
@@ -14,6 +16,9 @@ export class DocumentResultResponseDto {
   @ApiProperty()
   jobId!: string;
 
+  @ApiProperty({ enum: DocumentType })
+  docType!: DocumentType;
+
   @ApiPropertyOptional()
   jsonUrl?: string | null;
 
@@ -23,11 +28,11 @@ export class DocumentResultResponseDto {
   @ApiProperty()
   createdAt!: Date;
 
-  @ApiPropertyOptional()
-  summary?: Record<string, any> | null;
+  @ApiProperty({ type: [ExtractedFieldResponseDto] })
+  fields!: ExtractedFieldResponseDto[];
 
-  @ApiPropertyOptional({ type: [InvoiceItemResponseDto] })
-  items?: InvoiceItemResponseDto[];
+  @ApiProperty({ type: [LineItemResponseDto] })
+  lineItems!: LineItemResponseDto[];
 
   @ApiProperty({ enum: DocumentResultStatus, default: DocumentResultStatus.draft })
   status!: DocumentResultStatus;
