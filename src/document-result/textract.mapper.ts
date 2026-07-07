@@ -127,6 +127,19 @@ const CANONICAL_FIELDS: Record<string, CanonicalDef> = {
 const SUPPLIER_TAX_ID: CanonicalDef = { key: 'SUPPLIER_TAX_ID', label: 'Supplier tax ID', dataType: FieldDataType.STRING };
 const CUSTOMER_TAX_ID: CanonicalDef = { key: 'CUSTOMER_TAX_ID', label: 'Customer tax ID', dataType: FieldDataType.STRING };
 
+// Textract has no IBAN field type — it lands in a generic OTHER field. We promote it by
+// pattern (2-letter country + 2 check digits + 11–30 alphanumerics).
+const IBAN_FIELD: CanonicalDef = { key: 'IBAN', label: 'IBAN', dataType: FieldDataType.STRING };
+const IBAN_RE = /^[A-Z]{2}\d{2}[A-Z0-9]{11,30}$/;
+
+/** Return the normalized (space-stripped) IBAN if the value looks like one, else null. */
+function detectIban(v: unknown): string | null {
+  const s = str(v);
+  if (!s) return null;
+  const compact = s.replace(/\s+/g, '').toUpperCase();
+  return IBAN_RE.test(compact) ? compact : null;
+}
+
 // dataTypes whose values should be parsed into a stored numeric.
 const NUMERIC_TYPES = new Set<FieldDataType>([FieldDataType.CURRENCY, FieldDataType.NUMBER]);
 
@@ -156,7 +169,7 @@ function taxIdParty(
 /** Canonical definition for a header field key, used when creating an edited field
  *  that wasn't originally detected. Falls back to a STRING passthrough. */
 export function canonicalFieldDef(key: string): CanonicalDef {
-  const known = [...Object.values(CANONICAL_FIELDS), SUPPLIER_TAX_ID, CUSTOMER_TAX_ID];
+  const known = [...Object.values(CANONICAL_FIELDS), SUPPLIER_TAX_ID, CUSTOMER_TAX_ID, IBAN_FIELD];
   const byCanonical = known.find(d => d.key === key);
   if (byCanonical) return byCanonical;
   return { key, label: humanize(key), dataType: FieldDataType.STRING };
@@ -302,9 +315,26 @@ function mapExpense(docs: RawExpenseDoc[]): MappedResult {
       }
 
       // Curated model: keep only canonical fields. Everything else (granular address
-      // parts, OTHER, etc.) stays in the raw S3 JSON but isn't materialized here.
+      // parts, OTHER, etc.) stays in the raw S3 JSON but isn't materialized here — except
+      // an IBAN, which Textract only exposes as a generic OTHER field.
       const def = CANONICAL_FIELDS[rawType];
-      if (!def) continue;
+      if (!def) {
+        const iban = detectIban(f.value);
+        if (iban && !seen.has(IBAN_FIELD.key)) {
+          seen.add(IBAN_FIELD.key);
+          fields.push({
+            key: IBAN_FIELD.key,
+            label: IBAN_FIELD.label,
+            dataType: IBAN_FIELD.dataType,
+            detectedValue: iban,
+            numericValue: null,
+            confidence: conf(f.confidence),
+            page: typeof f.page === 'number' ? f.page : 1,
+            boundingBox: toBox(f.boundingBox),
+          });
+        }
+        continue;
+      }
       // One row per canonical key; keep the first (highest-priority) hit.
       if (seen.has(def.key)) continue;
       seen.add(def.key);
