@@ -26,6 +26,7 @@ interface RawSummaryField {
   confidence?: number;
   boundingBox?: RawBox;
   page?: number;
+  groupTypes?: string[]; // Textract GroupProperties: e.g. ["VENDOR"] | ["RECEIVER"]
 }
 
 interface RawLineItemCell {
@@ -119,19 +120,31 @@ const CANONICAL_FIELDS: Record<string, CanonicalDef> = {
   AMOUNT_DUE: { key: 'AMOUNT_DUE', label: 'Amount due', dataType: FieldDataType.CURRENCY },
   AMOUNT_PAID: { key: 'AMOUNT_PAID', label: 'Amount paid', dataType: FieldDataType.CURRENCY },
   PAYMENT_TERMS: { key: 'PAYMENT_TERMS', label: 'Payment terms', dataType: FieldDataType.STRING },
-  // Textract emits one TAX_PAYER_ID per party (vendor + customer) with the same type.
-  // Without GroupProperties (dropped by the Lambda) we can't split them, so we keep the
-  // first occurrence — typically the vendor/supplier — as a single "Tax ID".
-  TAX_PAYER_ID: { key: 'TAX_ID', label: 'Tax ID', dataType: FieldDataType.STRING },
 };
+
+// TAX_PAYER_ID is emitted once per party with the same Textract type; the party is only
+// distinguishable via GroupProperties (groupTypes), so it's resolved dynamically.
+const SUPPLIER_TAX_ID: CanonicalDef = { key: 'SUPPLIER_TAX_ID', label: 'Supplier tax ID', dataType: FieldDataType.STRING };
+const CUSTOMER_TAX_ID: CanonicalDef = { key: 'CUSTOMER_TAX_ID', label: 'Customer tax ID', dataType: FieldDataType.STRING };
 
 // dataTypes whose values should be parsed into a stored numeric.
 const NUMERIC_TYPES = new Set<FieldDataType>([FieldDataType.CURRENCY, FieldDataType.NUMBER]);
 
+/** Resolve a raw AnalyzeExpense summary type to a curated canonical field, using the
+ *  party group (VENDOR/RECEIVER) to split types that repeat per party. Returns null for
+ *  non-curated types (they stay in the raw S3 JSON only). */
+function resolveExpenseField(rawType: string, groupTypes: string[]): CanonicalDef | null {
+  if (rawType === 'TAX_PAYER_ID') {
+    return groupTypes.includes('RECEIVER') ? CUSTOMER_TAX_ID : SUPPLIER_TAX_ID;
+  }
+  return CANONICAL_FIELDS[rawType] ?? null;
+}
+
 /** Canonical definition for a header field key, used when creating an edited field
  *  that wasn't originally detected. Falls back to a STRING passthrough. */
 export function canonicalFieldDef(key: string): CanonicalDef {
-  const byCanonical = Object.values(CANONICAL_FIELDS).find(d => d.key === key);
+  const known = [...Object.values(CANONICAL_FIELDS), SUPPLIER_TAX_ID, CUSTOMER_TAX_ID];
+  const byCanonical = known.find(d => d.key === key);
   if (byCanonical) return byCanonical;
   return { key, label: humanize(key), dataType: FieldDataType.STRING };
 }
@@ -254,7 +267,7 @@ function mapExpense(docs: RawExpenseDoc[]): MappedResult {
       if (!rawType) continue;
       // Curated model: keep only canonical fields. Everything else (granular address
       // parts, OTHER, etc.) stays in the raw S3 JSON but isn't materialized here.
-      const def = CANONICAL_FIELDS[rawType];
+      const def = resolveExpenseField(rawType, f.groupTypes ?? []);
       if (!def) continue;
       // One row per canonical key; keep the first (highest-priority) hit.
       if (seen.has(def.key)) continue;
