@@ -130,14 +130,27 @@ const CUSTOMER_TAX_ID: CanonicalDef = { key: 'CUSTOMER_TAX_ID', label: 'Customer
 // dataTypes whose values should be parsed into a stored numeric.
 const NUMERIC_TYPES = new Set<FieldDataType>([FieldDataType.CURRENCY, FieldDataType.NUMBER]);
 
-/** Resolve a raw AnalyzeExpense summary type to a curated canonical field, using the
- *  party group (VENDOR/RECEIVER) to split types that repeat per party. Returns null for
- *  non-curated types (they stay in the raw S3 JSON only). */
-function resolveExpenseField(rawType: string, groupTypes: string[]): CanonicalDef | null {
-  if (rawType === 'TAX_PAYER_ID') {
-    return groupTypes.includes('RECEIVER') ? CUSTOMER_TAX_ID : SUPPLIER_TAX_ID;
+/**
+ * Decide whether a TAX_PAYER_ID belongs to the supplier or the customer.
+ * Textract sometimes tags the party via GroupProperties (VENDOR* / RECEIVER*), but often
+ * leaves TAX_PAYER_ID ungrouped — so we fall back to horizontal proximity to the detected
+ * vendor vs customer name box, then to a left/right-of-center default.
+ */
+function taxIdParty(
+  groupTypes: string[],
+  box: NormalizedBox | null,
+  vendorBox: NormalizedBox | null,
+  customerBox: NormalizedBox | null,
+): 'supplier' | 'customer' {
+  if (groupTypes.some(t => /RECEIVER/i.test(t))) return 'customer';
+  if (groupTypes.some(t => /VENDOR|SUPPLIER/i.test(t))) return 'supplier';
+  if (box && vendorBox && customerBox) {
+    const dVendor = Math.abs(box.left - vendorBox.left);
+    const dCustomer = Math.abs(box.left - customerBox.left);
+    return dCustomer < dVendor ? 'customer' : 'supplier';
   }
-  return CANONICAL_FIELDS[rawType] ?? null;
+  if (box) return box.left < 0.5 ? 'supplier' : 'customer';
+  return 'supplier';
 }
 
 /** Canonical definition for a header field key, used when creating an edited field
@@ -255,19 +268,42 @@ export function mapTextractResult(parsed: unknown): MappedResult {
   return { fields: [], lineItems: [] };
 }
 
+interface TaxIdCandidate {
+  detectedValue: string | null;
+  confidence: number | null;
+  page: number;
+  boundingBox: NormalizedBox | null;
+  groupTypes: string[];
+}
+
 function mapExpense(docs: RawExpenseDoc[]): MappedResult {
   const fields: MappedField[] = [];
   const seen = new Set<string>();
   const lineItems: MappedLineItem[] = [];
+  const taxIds: TaxIdCandidate[] = [];
   let rowIndex = 0;
 
   for (const doc of docs) {
     for (const f of doc.summaryFields ?? []) {
       const rawType = str(f.type);
       if (!rawType) continue;
+
+      // TAX_PAYER_ID repeats per party but often isn't grouped — collect and resolve after
+      // the vendor/customer anchors are known.
+      if (rawType === 'TAX_PAYER_ID') {
+        taxIds.push({
+          detectedValue: str(f.value),
+          confidence: conf(f.confidence),
+          page: typeof f.page === 'number' ? f.page : 1,
+          boundingBox: toBox(f.boundingBox),
+          groupTypes: f.groupTypes ?? [],
+        });
+        continue;
+      }
+
       // Curated model: keep only canonical fields. Everything else (granular address
       // parts, OTHER, etc.) stays in the raw S3 JSON but isn't materialized here.
-      const def = resolveExpenseField(rawType, f.groupTypes ?? []);
+      const def = CANONICAL_FIELDS[rawType];
       if (!def) continue;
       // One row per canonical key; keep the first (highest-priority) hit.
       if (seen.has(def.key)) continue;
@@ -290,9 +326,10 @@ function mapExpense(docs: RawExpenseDoc[]): MappedResult {
     }
   }
 
+  const byKey = (k: string) => fields.find(f => f.key === k);
+
   // Textract returns the full postal block (name line included) as the address. Since we
   // capture the name separately, strip it so the address field isn't "Name\nStreet...".
-  const byKey = (k: string) => fields.find(f => f.key === k);
   for (const [addrKey, nameKey] of [
     ['VENDOR_ADDRESS', 'VENDOR_NAME'],
     ['CUSTOMER_ADDRESS', 'CUSTOMER_NAME'],
@@ -300,6 +337,26 @@ function mapExpense(docs: RawExpenseDoc[]): MappedResult {
     const addr = byKey(addrKey);
     const name = byKey(nameKey);
     if (addr) addr.detectedValue = stripLeadingName(addr.detectedValue, name?.detectedValue ?? null);
+  }
+
+  // Assign each Tax ID to supplier/customer (one per party, first/highest-priority wins).
+  const vendorBox = byKey('VENDOR_NAME')?.boundingBox ?? null;
+  const customerBox = byKey('CUSTOMER_NAME')?.boundingBox ?? null;
+  for (const t of taxIds) {
+    const party = taxIdParty(t.groupTypes, t.boundingBox, vendorBox, customerBox);
+    const def = party === 'customer' ? CUSTOMER_TAX_ID : SUPPLIER_TAX_ID;
+    if (seen.has(def.key)) continue;
+    seen.add(def.key);
+    fields.push({
+      key: def.key,
+      label: def.label,
+      dataType: def.dataType,
+      detectedValue: t.detectedValue,
+      numericValue: null,
+      confidence: t.confidence,
+      page: t.page,
+      boundingBox: t.boundingBox,
+    });
   }
 
   return { fields, lineItems };
