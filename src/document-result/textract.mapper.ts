@@ -225,6 +225,84 @@ function parsePercent(v: unknown): number | null {
   return parseAmount(s.replace('%', ''));
 }
 
+/** Expand a 2-digit year to a 4-digit one (>=70 -> 1900s, else 2000s). */
+function normalizeYear(y: number): number {
+  if (y >= 100) return y;
+  return y >= 70 ? 1900 + y : 2000 + y;
+}
+
+/** Build epoch-ms at UTC midnight, rejecting invalid/overflowing calendar dates. */
+function utcDate(year: number, month: number, day: number): number | null {
+  if (month < 1 || month > 12 || day < 1 || day > 31) return null;
+  const ms = Date.UTC(year, month - 1, day);
+  const d = new Date(ms);
+  // Reject overflow (e.g. 31 Feb rolling into March).
+  if (d.getUTCFullYear() !== year || d.getUTCMonth() !== month - 1 || d.getUTCDate() !== day) {
+    return null;
+  }
+  return ms;
+}
+
+/**
+ * Parse a date string into epoch milliseconds at UTC midnight — the typed value stored on
+ * DATE fields (the raw string stays in detectedValue). Sorting/exports derive from this.
+ *
+ * Locale note: numeric dates are read DAY-FIRST (DD/MM/YY[YY]) — the common European
+ * invoice convention, consistent with the comma-decimal amounts we see — except when a
+ * 4-digit leading component marks an ISO year, or a component > 12 can only be the day.
+ * This is a pragmatic MVP heuristic, not full i18n; genuinely ambiguous inputs (both parts
+ * <= 12, e.g. 04/01/2017) default to day-first. Returns null if it isn't a valid date.
+ */
+export function parseDate(v: unknown): number | null {
+  const s = str(v);
+  if (s === null) return null;
+
+  // ISO-ish YYYY-MM-DD (optionally followed by time) — unambiguous.
+  const isoMatch = s.match(/^(\d{4})-(\d{1,2})-(\d{1,2})/);
+  if (isoMatch) return utcDate(+isoMatch[1], +isoMatch[2], +isoMatch[3]);
+
+  // Numeric date with / . or - separators.
+  const numMatch = s.match(/^(\d{1,4})[/.\-](\d{1,2})[/.\-](\d{1,4})$/);
+  if (numMatch) {
+    const a = +numMatch[1];
+    const b = +numMatch[2];
+    const c = +numMatch[3];
+    if (numMatch[1].length === 4) {
+      // YYYY/MM/DD
+      return utcDate(a, b, c);
+    }
+    // Day-first by default; swap only when the first component can't be a day-of-month
+    // and the second can (a<=12 & b>12 -> the first is the month, e.g. 04/13/2017).
+    let day = a;
+    let month = b;
+    if (a <= 12 && b > 12) {
+      day = b;
+      month = a;
+    }
+    return utcDate(normalizeYear(c), month, day);
+  }
+
+  // Named-month formats ("13 Mar 2015", "March 13, 2015") — best effort via the engine,
+  // re-projected onto UTC midnight so it matches the numeric paths.
+  const parsed = Date.parse(s);
+  if (Number.isFinite(parsed)) {
+    const d = new Date(parsed);
+    return utcDate(d.getFullYear(), d.getMonth() + 1, d.getDate());
+  }
+  return null;
+}
+
+/**
+ * The single source of truth for a field's stored numeric value. Currency/number fields
+ * parse to their amount; date fields parse to epoch-ms; everything else has none. Used by
+ * both the initial mapping and edit re-derivation so the two never drift.
+ */
+export function deriveNumericValue(dataType: FieldDataType, raw: unknown): number | null {
+  if (NUMERIC_TYPES.has(dataType)) return parseAmount(raw);
+  if (dataType === FieldDataType.DATE) return parseDate(raw);
+  return null;
+}
+
 /** Collapse newlines/runs of whitespace to single spaces (for one-line fields). */
 function normalizeInline(v: string | null): string | null {
   if (v === null) return null;
@@ -348,7 +426,7 @@ function mapExpense(docs: RawExpenseDoc[]): MappedResult {
         label: def.label,
         dataType: def.dataType,
         detectedValue,
-        numericValue: NUMERIC_TYPES.has(def.dataType) ? parseAmount(detectedValue) : null,
+        numericValue: deriveNumericValue(def.dataType, detectedValue),
         confidence: conf(f.confidence),
         page: typeof f.page === 'number' ? f.page : 1,
         boundingBox: toBox(f.boundingBox),
