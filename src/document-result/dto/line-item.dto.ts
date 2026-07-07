@@ -25,6 +25,9 @@ export class LineItemResponseDto {
   @ApiPropertyOptional()
   tax?: number | null;
 
+  @ApiPropertyOptional({ description: 'Per-line VAT/tax rate as a percent (e.g. 10 for 10%)' })
+  taxRate?: number | null;
+
   @ApiPropertyOptional()
   productCode?: string | null;
 
@@ -69,6 +72,11 @@ export class LineItemEditDto {
   @IsOptional()
   @IsNumber()
   tax?: number | null;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsNumber()
+  taxRate?: number | null;
 
   @ApiPropertyOptional()
   @IsOptional()

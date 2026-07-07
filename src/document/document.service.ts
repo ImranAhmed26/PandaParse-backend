@@ -49,6 +49,7 @@ export interface DocumentOcrFieldDto {
   dataType: string;
   detectedValue: string | null;
   value: string | null;
+  numericValue: number | null;
   confidence: number | null;
   page: number;
   boundingBox: unknown;
@@ -63,6 +64,7 @@ export interface DocumentOcrLineItemDto {
   unitPrice: number | null;
   amount: number | null;
   tax: number | null;
+  taxRate: number | null;
   productCode: string | null;
   boundingBox: unknown;
   confidence: number | null;
@@ -417,6 +419,7 @@ export class DocumentService {
                           dataType: true,
                           detectedValue: true,
                           value: true,
+                          numericValue: true,
                           confidence: true,
                           page: true,
                           boundingBox: true,
@@ -433,6 +436,7 @@ export class DocumentService {
                           unitPrice: true,
                           amount: true,
                           tax: true,
+                          taxRate: true,
                           productCode: true,
                           boundingBox: true,
                           confidence: true,

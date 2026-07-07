@@ -26,6 +26,7 @@ interface RawSummaryField {
   confidence?: number;
   boundingBox?: RawBox;
   page?: number;
+  groupTypes?: string[]; // Textract GroupProperties: e.g. ["VENDOR"] | ["RECEIVER"]
 }
 
 interface RawLineItemCell {
@@ -67,6 +68,7 @@ export interface MappedField {
   label: string | null;
   dataType: FieldDataType;
   detectedValue: string | null;
+  numericValue: number | null; // parsed number for CURRENCY/NUMBER fields, else null
   confidence: number | null;
   page: number;
   boundingBox: NormalizedBox | null;
@@ -79,6 +81,7 @@ export interface MappedLineItem {
   unitPrice: number | null;
   amount: number | null;
   tax: number | null;
+  taxRate: number | null; // per-line VAT/tax rate as a percent (e.g. 10 for "10%")
   productCode: string | null;
   boundingBox: NormalizedBox | null;
   confidence: number | null;
@@ -119,10 +122,29 @@ const CANONICAL_FIELDS: Record<string, CanonicalDef> = {
   PAYMENT_TERMS: { key: 'PAYMENT_TERMS', label: 'Payment terms', dataType: FieldDataType.STRING },
 };
 
+// TAX_PAYER_ID is emitted once per party with the same Textract type; the party is only
+// distinguishable via GroupProperties (groupTypes), so it's resolved dynamically.
+const SUPPLIER_TAX_ID: CanonicalDef = { key: 'SUPPLIER_TAX_ID', label: 'Supplier tax ID', dataType: FieldDataType.STRING };
+const CUSTOMER_TAX_ID: CanonicalDef = { key: 'CUSTOMER_TAX_ID', label: 'Customer tax ID', dataType: FieldDataType.STRING };
+
+// dataTypes whose values should be parsed into a stored numeric.
+const NUMERIC_TYPES = new Set<FieldDataType>([FieldDataType.CURRENCY, FieldDataType.NUMBER]);
+
+/** Resolve a raw AnalyzeExpense summary type to a curated canonical field, using the
+ *  party group (VENDOR/RECEIVER) to split types that repeat per party. Returns null for
+ *  non-curated types (they stay in the raw S3 JSON only). */
+function resolveExpenseField(rawType: string, groupTypes: string[]): CanonicalDef | null {
+  if (rawType === 'TAX_PAYER_ID') {
+    return groupTypes.includes('RECEIVER') ? CUSTOMER_TAX_ID : SUPPLIER_TAX_ID;
+  }
+  return CANONICAL_FIELDS[rawType] ?? null;
+}
+
 /** Canonical definition for a header field key, used when creating an edited field
  *  that wasn't originally detected. Falls back to a STRING passthrough. */
 export function canonicalFieldDef(key: string): CanonicalDef {
-  const byCanonical = Object.values(CANONICAL_FIELDS).find(d => d.key === key);
+  const known = [...Object.values(CANONICAL_FIELDS), SUPPLIER_TAX_ID, CUSTOMER_TAX_ID];
+  const byCanonical = known.find(d => d.key === key);
   if (byCanonical) return byCanonical;
   return { key, label: humanize(key), dataType: FieldDataType.STRING };
 }
@@ -144,8 +166,14 @@ function conf(v: unknown): number | null {
   return typeof v === 'number' && Number.isFinite(v) ? v : null;
 }
 
-/** Parse a currency/number string like "$1,234.50" or "1.234,50" into a number. */
-function parseNumber(v: unknown): number | null {
+/**
+ * Parse a monetary/number string into a number. Shared by header currency fields and
+ * line-item columns. Deliberately locale-agnostic: strips currency symbols, spaces
+ * (incl. thin/non-breaking used as thousands separators) and other noise, then decides
+ * the decimal separator by "whichever of . or , appears last" — which handles both
+ * "1,234.50" and "1.234,50". Not a full i18n parser; good enough without locale data.
+ */
+export function parseAmount(v: unknown): number | null {
   const s = str(v);
   if (s === null) return null;
   // Strip everything except digits, separators and sign, then normalize separators.
@@ -162,6 +190,31 @@ function parseNumber(v: unknown): number | null {
   }
   const n = Number(cleaned);
   return Number.isFinite(n) ? n : null;
+}
+
+/** Parse a percentage cell like "10%" or "7,5 %" into its numeric rate (10, 7.5). */
+function parsePercent(v: unknown): number | null {
+  const s = str(v);
+  if (s === null || !s.includes('%')) return null;
+  return parseAmount(s.replace('%', ''));
+}
+
+/** Collapse newlines/runs of whitespace to single spaces (for one-line fields). */
+function normalizeInline(v: string | null): string | null {
+  if (v === null) return null;
+  const out = v.replace(/\s+/g, ' ').trim();
+  return out.length > 0 ? out : null;
+}
+
+/** Drop a leading name line from an address when it duplicates the entity name — Textract
+ *  returns the whole postal block (name included) as the address. */
+function stripLeadingName(address: string | null, name: string | null): string | null {
+  if (!address || !name) return address;
+  const lines = address.split(/\r?\n/);
+  if (lines.length > 1 && lines[0].trim() === name.trim()) {
+    return lines.slice(1).join('\n').trim() || address;
+  }
+  return address;
 }
 
 function humanize(key: string): string {
@@ -214,16 +267,18 @@ function mapExpense(docs: RawExpenseDoc[]): MappedResult {
       if (!rawType) continue;
       // Curated model: keep only canonical fields. Everything else (granular address
       // parts, OTHER, etc.) stays in the raw S3 JSON but isn't materialized here.
-      const def = CANONICAL_FIELDS[rawType];
+      const def = resolveExpenseField(rawType, f.groupTypes ?? []);
       if (!def) continue;
       // One row per canonical key; keep the first (highest-priority) hit.
       if (seen.has(def.key)) continue;
       seen.add(def.key);
+      const detectedValue = str(f.value);
       fields.push({
         key: def.key,
         label: def.label,
         dataType: def.dataType,
-        detectedValue: str(f.value),
+        detectedValue,
+        numericValue: NUMERIC_TYPES.has(def.dataType) ? parseAmount(detectedValue) : null,
         confidence: conf(f.confidence),
         page: typeof f.page === 'number' ? f.page : 1,
         boundingBox: toBox(f.boundingBox),
@@ -233,6 +288,18 @@ function mapExpense(docs: RawExpenseDoc[]): MappedResult {
     for (const li of doc.lineItems ?? []) {
       lineItems.push(mapLineItem(li, rowIndex++));
     }
+  }
+
+  // Textract returns the full postal block (name line included) as the address. Since we
+  // capture the name separately, strip it so the address field isn't "Name\nStreet...".
+  const byKey = (k: string) => fields.find(f => f.key === k);
+  for (const [addrKey, nameKey] of [
+    ['VENDOR_ADDRESS', 'VENDOR_NAME'],
+    ['CUSTOMER_ADDRESS', 'CUSTOMER_NAME'],
+  ] as const) {
+    const addr = byKey(addrKey);
+    const name = byKey(nameKey);
+    if (addr) addr.detectedValue = stripLeadingName(addr.detectedValue, name?.detectedValue ?? null);
   }
 
   return { fields, lineItems };
@@ -251,13 +318,28 @@ function mapLineItem(li: RawLineItem, rowIndex: number): MappedLineItem {
 
   const row = li.EXPENSE_ROW;
   const item = li.ITEM;
+
+  // A per-line VAT/tax rate often lands in an untyped cell (e.g. OTHER = "10%"). Take the
+  // first percentage-looking cell as the rate; the raw cell is preserved in `cells`.
+  let taxRate: number | null = null;
+  for (const cell of Object.values(li)) {
+    const r = parsePercent(cell?.value);
+    if (r !== null) {
+      taxRate = r;
+      break;
+    }
+  }
+
   return {
     rowIndex,
-    description: str(item?.value),
-    quantity: parseNumber(li.QUANTITY?.value),
-    unitPrice: parseNumber(li.UNIT_PRICE?.value),
-    amount: parseNumber(li.PRICE?.value),
-    tax: parseNumber(li.TAX?.value),
+    // Item descriptions wrap across physical lines; Textract keeps the newlines. Collapse
+    // them to spaces for a clean one-line value (raw text stays in cells.ITEM).
+    description: normalizeInline(str(item?.value)),
+    quantity: parseAmount(li.QUANTITY?.value),
+    unitPrice: parseAmount(li.UNIT_PRICE?.value),
+    amount: parseAmount(li.PRICE?.value),
+    tax: parseAmount(li.TAX?.value),
+    taxRate,
     productCode: str(li.PRODUCT_CODE?.value),
     boundingBox: toBox(row?.boundingBox) ?? toBox(item?.boundingBox),
     confidence: conf(row?.confidence) ?? conf(item?.confidence),
@@ -282,6 +364,7 @@ function mapDocument(pages: RawPage[]): MappedResult {
         label,
         dataType: FieldDataType.STRING,
         detectedValue: str(kv.value),
+        numericValue: null,
         confidence: conf(kv.confidence),
         page,
         boundingBox: toBox(kv.boundingBox),

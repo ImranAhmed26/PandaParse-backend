@@ -6,7 +6,7 @@ import {
   BadRequestException,
   ConflictException,
 } from '@nestjs/common';
-import { Prisma } from '@prisma/client';
+import { Prisma, FieldDataType } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { S3ObjectService } from '../aws/s3-object/s3-object.service';
 import { CreateDocumentResultDto } from './dto/create-document-result.dto';
@@ -14,7 +14,10 @@ import { UpdateDocumentResultDto } from './dto/update-document-result.dto';
 import { DocumentResultResponseDto } from './dto/document-result-response.dto';
 import { getErrorMessage, getErrorStack, getPrismaErrorCode } from 'src/common/types/error.types';
 import { DocumentStatus } from '@prisma/client';
-import { canonicalFieldDef, mapTextractResult } from './textract.mapper';
+import { canonicalFieldDef, mapTextractResult, parseAmount } from './textract.mapper';
+
+// dataTypes whose edited value should be re-parsed into numericValue.
+const NUMERIC_TYPES = new Set<FieldDataType>([FieldDataType.CURRENCY, FieldDataType.NUMBER]);
 
 /** Shared select for returning a fully-populated result. */
 const RESULT_SELECT = {
@@ -37,6 +40,7 @@ const RESULT_SELECT = {
       dataType: true,
       detectedValue: true,
       value: true,
+      numericValue: true,
       confidence: true,
       page: true,
       boundingBox: true,
@@ -53,6 +57,7 @@ const RESULT_SELECT = {
       unitPrice: true,
       amount: true,
       tax: true,
+      taxRate: true,
       productCode: true,
       boundingBox: true,
       confidence: true,
@@ -161,6 +166,7 @@ export class DocumentResultService {
                 dataType: f.dataType,
                 detectedValue: f.detectedValue,
                 value: f.detectedValue, // current value starts equal to the detection
+                numericValue: f.numericValue,
                 confidence: f.confidence,
                 page: f.page,
                 boundingBox: jsonOrNull(f.boundingBox),
@@ -174,6 +180,7 @@ export class DocumentResultService {
                 unitPrice: li.unitPrice,
                 amount: li.amount,
                 tax: li.tax,
+                taxRate: li.taxRate,
                 productCode: li.productCode,
                 boundingBox: jsonOrNull(li.boundingBox),
                 confidence: li.confidence,
@@ -286,7 +293,7 @@ export class DocumentResultService {
         where: { id },
         select: {
           id: true,
-          fields: { select: { key: true, detectedValue: true } },
+          fields: { select: { key: true, detectedValue: true, dataType: true } },
           lineItems: { select: { rowIndex: true } },
         },
       });
@@ -296,6 +303,7 @@ export class DocumentResultService {
       }
 
       const detectedByKey = new Map(existing.fields.map(f => [f.key, f.detectedValue]));
+      const dataTypeByKey = new Map(existing.fields.map(f => [f.key, f.dataType]));
 
       await this.prisma.$transaction(async tx => {
         // --- Header fields: upsert corrected values by canonical key ---
@@ -304,10 +312,13 @@ export class DocumentResultService {
           const detected = detectedByKey.get(edit.key) ?? null;
           const isEdited = value !== detected;
           const def = canonicalFieldDef(edit.key);
+          const dataType = dataTypeByKey.get(edit.key) ?? def.dataType;
+          // Re-derive the stored numeric for money/number fields from the edited text.
+          const numericValue = NUMERIC_TYPES.has(dataType) ? parseAmount(value) : null;
 
           await tx.extractedField.upsert({
             where: { resultId_key: { resultId: id, key: edit.key } },
-            update: { value, isEdited },
+            update: { value, numericValue, isEdited },
             create: {
               resultId: id,
               key: def.key,
@@ -315,6 +326,7 @@ export class DocumentResultService {
               dataType: def.dataType,
               detectedValue: null,
               value,
+              numericValue,
               isEdited,
             },
           });
@@ -341,6 +353,7 @@ export class DocumentResultService {
                 unitPrice: r.unitPrice ?? null,
                 amount: r.amount ?? null,
                 tax: r.tax ?? null,
+                taxRate: r.taxRate ?? null,
                 productCode: r.productCode ?? null,
               },
               create: {
@@ -351,6 +364,7 @@ export class DocumentResultService {
                 unitPrice: r.unitPrice ?? null,
                 amount: r.amount ?? null,
                 tax: r.tax ?? null,
+                taxRate: r.taxRate ?? null,
                 productCode: r.productCode ?? null,
               },
             });

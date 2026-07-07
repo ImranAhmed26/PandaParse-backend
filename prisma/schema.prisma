@@ -188,6 +188,7 @@ model ExtractedField {
   dataType      FieldDataType @default(STRING)
   detectedValue String? // original OCR value (immutable audit)
   value         String? // current value (edited, or equal to detectedValue)
+  numericValue  Float? // parsed numeric value for CURRENCY/NUMBER fields (value stays raw text)
   confidence    Float? // confidence of the detected value
   page          Int           @default(1)
   boundingBox   Json? // { left, top, width, height } normalized 0..1
@@ -213,6 +214,7 @@ model LineItem {
   unitPrice   Float?
   amount      Float?
   tax         Float?
+  taxRate     Float? // per-line VAT/tax rate as a percent (e.g. 10 for "10%"), when present
   productCode String?
 
   boundingBox Json? // whole-row box (EXPENSE_ROW) for mapping
