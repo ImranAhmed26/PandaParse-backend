@@ -212,12 +212,11 @@ function mapExpense(docs: RawExpenseDoc[]): MappedResult {
     for (const f of doc.summaryFields ?? []) {
       const rawType = str(f.type);
       if (!rawType) continue;
-      const def = CANONICAL_FIELDS[rawType] ?? {
-        key: rawType,
-        label: humanize(rawType),
-        dataType: FieldDataType.STRING,
-      };
-      // Curated set is one row per canonical key; keep the first (highest-priority) hit.
+      // Curated model: keep only canonical fields. Everything else (granular address
+      // parts, OTHER, etc.) stays in the raw S3 JSON but isn't materialized here.
+      const def = CANONICAL_FIELDS[rawType];
+      if (!def) continue;
+      // One row per canonical key; keep the first (highest-priority) hit.
       if (seen.has(def.key)) continue;
       seen.add(def.key);
       fields.push({
