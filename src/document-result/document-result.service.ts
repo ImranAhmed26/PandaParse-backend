@@ -6,19 +6,80 @@ import {
   BadRequestException,
   ConflictException,
 } from '@nestjs/common';
+import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
+import { S3ObjectService } from '../aws/s3-object/s3-object.service';
 import { CreateDocumentResultDto } from './dto/create-document-result.dto';
 import { UpdateDocumentResultDto } from './dto/update-document-result.dto';
 import { DocumentResultResponseDto } from './dto/document-result-response.dto';
 import { getErrorMessage, getErrorStack, getPrismaErrorCode } from 'src/common/types/error.types';
 import { DocumentStatus } from '@prisma/client';
+import { canonicalFieldDef, mapTextractResult } from './textract.mapper';
+
+/** Shared select for returning a fully-populated result. */
+const RESULT_SELECT = {
+  id: true,
+  jobId: true,
+  docType: true,
+  jsonUrl: true,
+  csvUrl: true,
+  createdAt: true,
+  status: true,
+  reviewedAt: true,
+  approvedAt: true,
+  approvedById: true,
+  fields: {
+    orderBy: { createdAt: 'asc' as const },
+    select: {
+      id: true,
+      key: true,
+      label: true,
+      dataType: true,
+      detectedValue: true,
+      value: true,
+      confidence: true,
+      page: true,
+      boundingBox: true,
+      isEdited: true,
+    },
+  },
+  lineItems: {
+    orderBy: { rowIndex: 'asc' as const },
+    select: {
+      id: true,
+      rowIndex: true,
+      description: true,
+      quantity: true,
+      unitPrice: true,
+      amount: true,
+      tax: true,
+      productCode: true,
+      boundingBox: true,
+      confidence: true,
+      cells: true,
+    },
+  },
+} satisfies Prisma.DocumentResultSelect;
+
+/** null -> Postgres NULL for nullable Json columns (Prisma requires a sentinel). */
+function jsonOrNull(v: unknown): Prisma.InputJsonValue | typeof Prisma.DbNull {
+  return v == null ? Prisma.DbNull : (v as Prisma.InputJsonValue);
+}
 
 @Injectable()
 export class DocumentResultService {
   private readonly logger = new Logger(DocumentResultService.name);
 
-  constructor(private prisma: PrismaService) {}
+  constructor(
+    private prisma: PrismaService,
+    private readonly s3Object: S3ObjectService,
+  ) {}
 
+  /**
+   * Called by the OCR Lambda. Reads the raw Textract JSON from S3 (`jsonUrl`),
+   * materializes the canonical fields + line items, and persists them alongside the
+   * result. If `documentProcessed` is false the document is flagged and no result is made.
+   */
   async createDocumentResult(
     data: CreateDocumentResultDto,
   ): Promise<DocumentResultResponseDto | null> {
@@ -30,29 +91,18 @@ export class DocumentResultService {
       documentProcessed: data.documentProcessed,
       hasJsonUrl: !!data.jsonUrl,
       hasCsvUrl: !!data.csvUrl,
-      hasSummary: !!data.summary,
-      itemCount: data.items?.length || 0,
     });
 
     try {
-      // Verify job exists and get associated document
       const job = await this.prisma.job.findUnique({
         where: { id: data.jobId },
         select: {
           id: true,
-          status: true,
-          result: {
-            select: { id: true },
-          },
+          type: true,
+          result: { select: { id: true } },
           upload: {
             select: {
-              id: true,
-              document: {
-                select: {
-                  id: true,
-                  status: true,
-                },
-              },
+              document: { select: { id: true } },
             },
           },
         },
@@ -62,132 +112,92 @@ export class DocumentResultService {
         throw new NotFoundException(`Job with ID ${data.jobId} not found`);
       }
 
-      // Get the document associated with this job
       const document = job.upload?.document;
       if (!document) {
         throw new NotFoundException(`No document found for job ${data.jobId}`);
       }
 
-      // Handle based on documentProcessed flag
+      // Processing failed upstream — flag the document, create no result.
       if (!data.documentProcessed) {
-        // Document processing failed - update document status to FLAGGED
         await this.prisma.document.update({
           where: { id: document.id },
           data: { status: DocumentStatus.FLAGGED },
         });
-
         this.logger.log(
           `Document ${document.id} status updated to FLAGGED (job ${data.jobId} failed processing)`,
-          {
-            operationId,
-            documentId: document.id,
-            jobId: data.jobId,
-          },
+          { operationId, documentId: document.id, jobId: data.jobId },
         );
-
-        // Return null to indicate no result was created
         return null;
       }
 
-      // Document processed successfully - check if result already exists
       if (job.result) {
         throw new ConflictException(
           `Job ${data.jobId} already has a document result (ID: ${job.result.id})`,
         );
       }
 
-      // Create DocumentResult, InvoiceItems, and update Document status in a transaction
+      // Materialize the curated field model from the raw Textract JSON in S3.
+      const parsed = data.jsonUrl ? await this.s3Object.getJson(data.jsonUrl) : null;
+      const mapped = mapTextractResult(parsed);
+
+      if (!parsed) {
+        this.logger.warn(
+          `No parsed JSON available for job ${data.jobId} (key=${data.jsonUrl ?? 'none'}); creating result with no fields`,
+          { operationId },
+        );
+      }
+
       const result = await this.prisma.$transaction(async tx => {
-        // Create DocumentResult
-        const documentResult = await tx.documentResult.create({
+        const created = await tx.documentResult.create({
           data: {
             jobId: data.jobId,
+            docType: job.type,
             jsonUrl: data.jsonUrl,
             csvUrl: data.csvUrl,
-            summary: data.summary ? (data.summary as any) : null,
-          },
-          select: {
-            id: true,
-            jobId: true,
-            jsonUrl: true,
-            csvUrl: true,
-            createdAt: true,
-            summary: true,
-            status: true,
-            reviewedAt: true,
-            approvedAt: true,
-            approvedById: true,
-          },
-        });
-
-        this.logger.debug(`DocumentResult created`, {
-          operationId,
-          resultId: documentResult.id,
-          jobId: data.jobId,
-        });
-
-        // Create InvoiceItems if provided
-        let items: any[] = [];
-        if (data.items && data.items.length > 0) {
-          const itemsData = data.items.map(item => ({
-            resultId: documentResult.id,
-            name: item.name,
-            quantity: item.quantity,
-            unitPrice: item.unitPrice,
-            total: item.total,
-            tax: item.tax,
-          }));
-
-          await tx.invoiceItem.createMany({
-            data: itemsData,
-          });
-
-          // Fetch created items
-          items = await tx.invoiceItem.findMany({
-            where: { resultId: documentResult.id },
-            select: {
-              id: true,
-              resultId: true,
-              name: true,
-              quantity: true,
-              unitPrice: true,
-              total: true,
-              tax: true,
-              createdAt: true,
+            fields: {
+              create: mapped.fields.map(f => ({
+                key: f.key,
+                label: f.label,
+                dataType: f.dataType,
+                detectedValue: f.detectedValue,
+                value: f.detectedValue, // current value starts equal to the detection
+                confidence: f.confidence,
+                page: f.page,
+                boundingBox: jsonOrNull(f.boundingBox),
+              })),
             },
-          });
+            lineItems: {
+              create: mapped.lineItems.map(li => ({
+                rowIndex: li.rowIndex,
+                description: li.description,
+                quantity: li.quantity,
+                unitPrice: li.unitPrice,
+                amount: li.amount,
+                tax: li.tax,
+                productCode: li.productCode,
+                boundingBox: jsonOrNull(li.boundingBox),
+                confidence: li.confidence,
+                cells: jsonOrNull(li.cells),
+              })),
+            },
+          },
+          select: RESULT_SELECT,
+        });
 
-          this.logger.debug(`Created ${items.length} invoice items`, {
-            operationId,
-            resultId: documentResult.id,
-            itemCount: items.length,
-          });
-        }
-
-        // Update document status to PROCESSED
         await tx.document.update({
           where: { id: document.id },
           data: { status: DocumentStatus.PROCESSED },
         });
 
-        this.logger.debug(`Document ${document.id} status updated to PROCESSED`, {
-          operationId,
-          documentId: document.id,
-          jobId: data.jobId,
-        });
-
-        return {
-          ...documentResult,
-          items,
-          summary: documentResult.summary as Record<string, any> | null,
-        };
+        return created;
       });
 
       this.logger.log(`Document result created successfully`, {
         operationId,
         resultId: result.id,
         jobId: data.jobId,
-        itemCount: result.items.length,
+        fieldCount: result.fields.length,
+        lineItemCount: result.lineItems.length,
       });
 
       return result as DocumentResultResponseDto;
@@ -201,25 +211,17 @@ export class DocumentResultService {
       }
 
       const errorCode = getPrismaErrorCode(error);
-
       if (errorCode === 'P2002') {
         throw new ConflictException(`Document result already exists for job ${data.jobId}`);
       }
-
       if (errorCode === 'P2003') {
         throw new BadRequestException(`Invalid job ID: ${data.jobId}`);
       }
 
       this.logger.error(
         `Failed to create document result for job ${data.jobId}: ${getErrorMessage(error)}`,
-        {
-          operationId,
-          jobId: data.jobId,
-          errorCode,
-          stack: getErrorStack(error),
-        },
+        { operationId, jobId: data.jobId, errorCode, stack: getErrorStack(error) },
       );
-
       throw new InternalServerErrorException('Failed to create document result');
     }
   }
@@ -228,45 +230,16 @@ export class DocumentResultService {
     try {
       const result = await this.prisma.documentResult.findUnique({
         where: { jobId },
-        select: {
-          id: true,
-          jobId: true,
-          jsonUrl: true,
-          csvUrl: true,
-          createdAt: true,
-          summary: true,
-          status: true,
-          reviewedAt: true,
-          approvedAt: true,
-          approvedById: true,
-          items: {
-            select: {
-              id: true,
-              resultId: true,
-              name: true,
-              quantity: true,
-              unitPrice: true,
-              total: true,
-              tax: true,
-              createdAt: true,
-            },
-            orderBy: { createdAt: 'asc' },
-          },
-        },
+        select: RESULT_SELECT,
       });
 
       if (!result) {
         throw new NotFoundException(`Document result for job ${jobId} not found`);
       }
 
-      return {
-        ...result,
-        summary: result.summary as Record<string, any> | null,
-      } as DocumentResultResponseDto;
+      return result as DocumentResultResponseDto;
     } catch (error: unknown) {
-      if (error instanceof NotFoundException) {
-        throw error;
-      }
+      if (error instanceof NotFoundException) throw error;
 
       this.logger.error(
         `Failed to fetch document result for job ${jobId}: ${getErrorMessage(error)}`,
@@ -280,45 +253,16 @@ export class DocumentResultService {
     try {
       const result = await this.prisma.documentResult.findUnique({
         where: { id },
-        select: {
-          id: true,
-          jobId: true,
-          jsonUrl: true,
-          csvUrl: true,
-          createdAt: true,
-          summary: true,
-          status: true,
-          reviewedAt: true,
-          approvedAt: true,
-          approvedById: true,
-          items: {
-            select: {
-              id: true,
-              resultId: true,
-              name: true,
-              quantity: true,
-              unitPrice: true,
-              total: true,
-              tax: true,
-              createdAt: true,
-            },
-            orderBy: { createdAt: 'asc' },
-          },
-        },
+        select: RESULT_SELECT,
       });
 
       if (!result) {
         throw new NotFoundException(`Document result with ID ${id} not found`);
       }
 
-      return {
-        ...result,
-        summary: result.summary as Record<string, any> | null,
-      } as DocumentResultResponseDto;
+      return result as DocumentResultResponseDto;
     } catch (error: unknown) {
-      if (error instanceof NotFoundException) {
-        throw error;
-      }
+      if (error instanceof NotFoundException) throw error;
 
       this.logger.error(
         `Failed to fetch document result ${id}: ${getErrorMessage(error)}`,
@@ -329,8 +273,9 @@ export class DocumentResultService {
   }
 
   /**
-   * Edit a document result from the Document Editor. Updates `summary` and/or fully
-   * replaces line `items` in a single transaction. Only provided fields are changed.
+   * Edit a document result from the Document Editor. `fields` upserts corrected values
+   * by canonical key (isEdited is derived by comparing to the original detection);
+   * `lineItems` replaces the row set, preserving detection detail on rows kept by index.
    */
   async updateDocumentResult(
     id: string,
@@ -339,78 +284,89 @@ export class DocumentResultService {
     try {
       const existing = await this.prisma.documentResult.findUnique({
         where: { id },
-        select: { id: true },
+        select: {
+          id: true,
+          fields: { select: { key: true, detectedValue: true } },
+          lineItems: { select: { rowIndex: true } },
+        },
       });
 
       if (!existing) {
         throw new NotFoundException(`Document result with ID ${id} not found`);
       }
 
-      const result = await this.prisma.$transaction(async tx => {
-        if (dto.summary !== undefined) {
-          await tx.documentResult.update({
-            where: { id },
-            data: { summary: dto.summary as any },
+      const detectedByKey = new Map(existing.fields.map(f => [f.key, f.detectedValue]));
+
+      await this.prisma.$transaction(async tx => {
+        // --- Header fields: upsert corrected values by canonical key ---
+        for (const edit of dto.fields ?? []) {
+          const value = edit.value ?? null;
+          const detected = detectedByKey.get(edit.key) ?? null;
+          const isEdited = value !== detected;
+          const def = canonicalFieldDef(edit.key);
+
+          await tx.extractedField.upsert({
+            where: { resultId_key: { resultId: id, key: edit.key } },
+            update: { value, isEdited },
+            create: {
+              resultId: id,
+              key: def.key,
+              label: def.label,
+              dataType: def.dataType,
+              detectedValue: null,
+              value,
+              isEdited,
+            },
           });
         }
 
-        if (dto.items !== undefined) {
-          // Replace existing line items with the corrected set.
-          await tx.invoiceItem.deleteMany({ where: { resultId: id } });
-          if (dto.items.length > 0) {
-            await tx.invoiceItem.createMany({
-              data: dto.items.map(item => ({
+        // --- Line items: upsert provided rows by index, drop the rest ---
+        if (dto.lineItems !== undefined) {
+          const rows = dto.lineItems.map((li, i) => ({
+            ...li,
+            rowIndex: li.rowIndex ?? i,
+          }));
+          const keepIndexes = rows.map(r => r.rowIndex);
+
+          await tx.lineItem.deleteMany({
+            where: { resultId: id, rowIndex: { notIn: keepIndexes.length ? keepIndexes : [-1] } },
+          });
+
+          for (const r of rows) {
+            await tx.lineItem.upsert({
+              where: { resultId_rowIndex: { resultId: id, rowIndex: r.rowIndex } },
+              update: {
+                description: r.description ?? null,
+                quantity: r.quantity ?? null,
+                unitPrice: r.unitPrice ?? null,
+                amount: r.amount ?? null,
+                tax: r.tax ?? null,
+                productCode: r.productCode ?? null,
+              },
+              create: {
                 resultId: id,
-                name: item.name,
-                quantity: item.quantity,
-                unitPrice: item.unitPrice,
-                total: item.total,
-                tax: item.tax,
-              })),
+                rowIndex: r.rowIndex,
+                description: r.description ?? null,
+                quantity: r.quantity ?? null,
+                unitPrice: r.unitPrice ?? null,
+                amount: r.amount ?? null,
+                tax: r.tax ?? null,
+                productCode: r.productCode ?? null,
+              },
             });
           }
         }
-
-        return tx.documentResult.findUniqueOrThrow({
-          where: { id },
-          select: {
-            id: true,
-            jobId: true,
-            jsonUrl: true,
-            csvUrl: true,
-            createdAt: true,
-            summary: true,
-            status: true,
-            reviewedAt: true,
-            approvedAt: true,
-            approvedById: true,
-            items: {
-              select: {
-                id: true,
-                resultId: true,
-                name: true,
-                quantity: true,
-                unitPrice: true,
-                total: true,
-                tax: true,
-                createdAt: true,
-              },
-              orderBy: { createdAt: 'asc' },
-            },
-          },
-        });
       });
 
-      this.logger.log(`Document result ${id} updated (summary/items edited)`);
+      const result = await this.prisma.documentResult.findUniqueOrThrow({
+        where: { id },
+        select: RESULT_SELECT,
+      });
 
-      return {
-        ...result,
-        summary: result.summary as Record<string, any> | null,
-      } as DocumentResultResponseDto;
+      this.logger.log(`Document result ${id} updated (fields/line items edited)`);
+      return result as DocumentResultResponseDto;
     } catch (error: unknown) {
-      if (error instanceof NotFoundException) {
-        throw error;
-      }
+      if (error instanceof NotFoundException) throw error;
 
       const errorCode = getPrismaErrorCode(error);
       if (errorCode === 'P2025') {
@@ -431,65 +387,29 @@ export class DocumentResultService {
     approvedById?: string,
   ): Promise<DocumentResultResponseDto> {
     try {
-      const updateData: {
-        status: string;
-        reviewedAt?: Date;
-        approvedAt?: Date;
-        approvedById?: string;
-      } = {
-        status,
+      const updateData: Prisma.DocumentResultUpdateInput = {
+        status: status as Prisma.DocumentResultUpdateInput['status'],
       };
 
-      // Set timestamps based on status
       if (status === 'reviewed') {
         updateData.reviewedAt = new Date();
       } else if (status === 'approved') {
         updateData.approvedAt = new Date();
         if (approvedById) {
-          updateData.approvedById = approvedById;
+          updateData.approvedBy = { connect: { id: approvedById } };
         }
       }
 
       const result = await this.prisma.documentResult.update({
         where: { id },
-        data: updateData as any,
-        select: {
-          id: true,
-          jobId: true,
-          jsonUrl: true,
-          csvUrl: true,
-          createdAt: true,
-          summary: true,
-          status: true,
-          reviewedAt: true,
-          approvedAt: true,
-          approvedById: true,
-          items: {
-            select: {
-              id: true,
-              resultId: true,
-              name: true,
-              quantity: true,
-              unitPrice: true,
-              total: true,
-              tax: true,
-              createdAt: true,
-            },
-            orderBy: { createdAt: 'asc' },
-          },
-        },
+        data: updateData,
+        select: RESULT_SELECT,
       });
 
       this.logger.log(`Document result ${id} status updated to ${status}`);
-
-      return {
-        ...result,
-        summary: result.summary as Record<string, any> | null,
-      } as DocumentResultResponseDto;
+      return result as DocumentResultResponseDto;
     } catch (error: unknown) {
-      if (error instanceof NotFoundException) {
-        throw error;
-      }
+      if (error instanceof NotFoundException) throw error;
 
       const errorCode = getPrismaErrorCode(error);
       if (errorCode === 'P2025') {

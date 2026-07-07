@@ -1,52 +1,31 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { IsString, IsOptional, IsObject, IsArray, ValidateNested, IsBoolean } from 'class-validator';
-import { Type } from 'class-transformer';
-import { InvoiceItemDto } from './invoice-item.dto';
+import { IsString, IsOptional, IsBoolean } from 'class-validator';
 
+/**
+ * Posted by the OCR Lambda after it writes the raw Textract JSON to S3. The backend
+ * reads that JSON (from `jsonUrl`) and materializes the canonical fields + line items
+ * itself, so no structured data is sent in this payload.
+ */
 export class CreateDocumentResultDto {
   @ApiProperty({ description: 'Job ID this result belongs to' })
   @IsString()
   jobId!: string;
 
-  @ApiProperty({ 
-    description: 'Whether the document was successfully processed. If false, document status will be set to FLAGGED and no result record will be created.',
-    example: true 
+  @ApiProperty({
+    description:
+      'Whether the document was successfully processed. If false, document status is set to FLAGGED and no result record is created.',
+    example: true,
   })
   @IsBoolean()
   documentProcessed!: boolean;
 
-  @ApiPropertyOptional({ description: 'S3 URL/key to parsed JSON' })
+  @ApiPropertyOptional({ description: 'S3 key to the raw Textract JSON (e.g. ocr/{jobId}.json)' })
   @IsString()
   @IsOptional()
   jsonUrl?: string;
 
-  @ApiPropertyOptional({ description: 'S3 URL/key to CSV export' })
+  @ApiPropertyOptional({ description: 'S3 key to the CSV export' })
   @IsString()
   @IsOptional()
   csvUrl?: string;
-
-  @ApiPropertyOptional({
-    description: 'Summary data (vendor, date, total, etc.)',
-    example: {
-      vendor: 'ACME Corp',
-      invoiceNumber: 'INV-001',
-      date: '2024-01-15',
-      subtotal: 1000.0,
-      tax: 100.0,
-      total: 1100.0,
-    },
-  })
-  @IsObject()
-  @IsOptional()
-  summary?: Record<string, any>;
-
-  @ApiPropertyOptional({
-    description: 'Invoice line items',
-    type: [InvoiceItemDto],
-  })
-  @IsArray()
-  @ValidateNested({ each: true })
-  @Type(() => InvoiceItemDto)
-  @IsOptional()
-  items?: InvoiceItemDto[];
 }

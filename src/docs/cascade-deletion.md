@@ -7,42 +7,39 @@ When a document is deleted, the system performs **cascade deletion** to maintain
 ## Deletion Chain
 
 ```
-Document → WorkspaceDocument → Upload → Job → DocumentResult → InvoiceItem[]
+Document → WorkspaceDocument → Upload → Job → DocumentResult → (ExtractedField[] + LineItem[])
 ```
 
 ## Detailed Deletion Process
 
-### 1. **InvoiceItems** (Deepest Level)
+### 1. **DocumentResult** (with fields + line items)
 
-- **What**: Individual line items from invoice processing
-- **When**: If the document has OCR results with parsed items
-- **Example**: Product names, quantities, prices from an invoice
-
-### 2. **DocumentResult**
-
-- **What**: OCR processing results and metadata
+- **What**: OCR processing result plus its canonical `ExtractedField[]` (header fields)
+  and `LineItem[]` (rows)
 - **When**: If the document was processed through OCR
-- **Includes**: JSON results, CSV exports, processing summary
+- **Includes**: parsed-JSON/CSV S3 keys, per-field detected/corrected values, line items
+- **Cascade**: `ExtractedField` and `LineItem` are removed automatically via
+  `onDelete: Cascade` when the `DocumentResult` is deleted — no explicit child delete needed
 
-### 3. **Job**
+### 2. **Job**
 
 - **What**: Processing job record
 - **When**: If a processing job was created for the document
 - **Includes**: Job status, error messages, processing metadata
 
-### 4. **WorkspaceDocument Associations**
+### 3. **WorkspaceDocument Associations**
 
 - **What**: Many-to-many relationships between document and workspaces
 - **When**: Always (if document is in any workspaces)
 - **Purpose**: Removes document from workspace listings
 
-### 5. **Document**
+### 4. **Document**
 
 - **What**: The main document record
 - **When**: Always
 - **Includes**: File metadata, status, document type
 
-### 6. **Upload** (Conditional)
+### 5. **Upload** (Conditional)
 
 - **What**: S3 upload record and metadata
 - **When**: Only if no other documents reference the same upload
@@ -79,15 +76,10 @@ GET /api/documents/:id/delete-preview
     "jsonUrl": "s3://bucket/results.json",
     "csvUrl": "s3://bucket/results.csv"
   },
-  "invoiceItems": [
-    {
-      "id": "item-uuid",
-      "name": "Product A",
-      "total": 100.0
-    }
-  ],
+  "extractedFields": 12,
+  "lineItems": 5,
   "workspaceAssociations": 2,
-  "totalRecordsToDelete": 8
+  "totalRecordsToDelete": 21
 }
 ```
 
@@ -145,8 +137,8 @@ Total Records: 1-2
 ### Processed Document with OCR
 
 ```
-Document → WorkspaceDocument → Upload → Job → DocumentResult → InvoiceItems[5]
-Total Records: 9
+Document → WorkspaceDocument → Upload → Job → DocumentResult (+ ExtractedField[12] + LineItem[5])
+Total Records: 21
 ```
 
 ### Shared Upload Scenario
@@ -212,7 +204,8 @@ if (results.totalFailed > 0) {
 Document.uploadId → Upload.id (nullable)
 Job.uploadId → Upload.id (required)
 DocumentResult.jobId → Job.id (required)
-InvoiceItem.resultId → DocumentResult.id (required)
+ExtractedField.resultId → DocumentResult.id (required, ON DELETE CASCADE)
+LineItem.resultId → DocumentResult.id (required, ON DELETE CASCADE)
 WorkspaceDocument.documentId → Document.id (required)
 ```
 
@@ -220,7 +213,7 @@ WorkspaceDocument.documentId → Document.id (required)
 
 The deletion order prevents foreign key constraint violations:
 
-1. **Children First**: InvoiceItems → DocumentResult → Job
+1. **Result First**: DocumentResult (its ExtractedField/LineItem children cascade automatically) → Job
 2. **Associations**: WorkspaceDocument
 3. **Parent**: Document
 4. **Conditional**: Upload (only if not referenced)
@@ -231,7 +224,6 @@ The deletion order prevents foreign key constraint violations:
 
 ```
 Document ${documentId} and all related records deleted by user ${userId}
-Deleted ${count} invoice items for document ${documentId}
 Deleted document result for document ${documentId}
 Deleted job for document ${documentId}
 Upload record preserved - still referenced by ${count} other documents

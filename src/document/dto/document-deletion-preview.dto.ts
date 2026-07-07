@@ -56,21 +56,16 @@ export class DocumentDeletionPreviewDto {
   } | null;
 
   @ApiProperty({
-    description: 'Invoice items that will be deleted',
-    type: 'array',
-    example: [
-      {
-        id: 'item-uuid',
-        name: 'Product A',
-        total: 100.0,
-      },
-    ],
+    description: 'Number of extracted (header) fields that will be deleted',
+    example: 12,
   })
-  invoiceItems!: Array<{
-    id: string;
-    name?: string | null;
-    total?: number | null;
-  }>;
+  extractedFields!: number;
+
+  @ApiProperty({
+    description: 'Number of line items that will be deleted',
+    example: 5,
+  })
+  lineItems!: number;
 
   @ApiProperty({
     description: 'Number of workspace associations',

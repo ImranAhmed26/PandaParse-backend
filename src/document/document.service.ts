@@ -42,20 +42,39 @@ export interface PaginatedDocumentsResponseDto {
   totalPages: number;
 }
 
-export interface DocumentOcrResultItemDto {
+export interface DocumentOcrFieldDto {
   id: string;
-  name: string | null;
+  key: string;
+  label: string | null;
+  dataType: string;
+  detectedValue: string | null;
+  value: string | null;
+  confidence: number | null;
+  page: number;
+  boundingBox: unknown;
+  isEdited: boolean;
+}
+
+export interface DocumentOcrLineItemDto {
+  id: string;
+  rowIndex: number;
+  description: string | null;
   quantity: number | null;
   unitPrice: number | null;
-  total: number | null;
+  amount: number | null;
   tax: number | null;
+  productCode: string | null;
+  boundingBox: unknown;
+  confidence: number | null;
+  cells: unknown;
 }
 
 export interface DocumentOcrResultDto {
   id: string;
   status: string;
-  summary: Record<string, any> | null;
-  items: DocumentOcrResultItemDto[];
+  docType: DocumentType;
+  fields: DocumentOcrFieldDto[];
+  lineItems: DocumentOcrLineItemDto[];
   reviewedAt: Date | null;
   approvedAt: Date | null;
 }
@@ -74,7 +93,7 @@ export interface DocumentOcrResponseDto {
   };
   fileUrl: string | null;
   result: DocumentOcrResultDto | null;
-  parsed: unknown | null;
+  parsed: unknown;
 }
 
 @Injectable()
@@ -385,20 +404,40 @@ export class DocumentService {
                     select: {
                       id: true,
                       status: true,
+                      docType: true,
                       jsonUrl: true,
-                      summary: true,
                       reviewedAt: true,
                       approvedAt: true,
-                      items: {
+                      fields: {
+                        orderBy: { createdAt: 'asc' },
                         select: {
                           id: true,
-                          name: true,
+                          key: true,
+                          label: true,
+                          dataType: true,
+                          detectedValue: true,
+                          value: true,
+                          confidence: true,
+                          page: true,
+                          boundingBox: true,
+                          isEdited: true,
+                        },
+                      },
+                      lineItems: {
+                        orderBy: { rowIndex: 'asc' },
+                        select: {
+                          id: true,
+                          rowIndex: true,
+                          description: true,
                           quantity: true,
                           unitPrice: true,
-                          total: true,
+                          amount: true,
                           tax: true,
+                          productCode: true,
+                          boundingBox: true,
+                          confidence: true,
+                          cells: true,
                         },
-                        orderBy: { createdAt: 'asc' },
                       },
                     },
                   },
@@ -447,8 +486,9 @@ export class DocumentService {
         ? {
             id: job.result.id,
             status: job.result.status,
-            summary: job.result.summary as Record<string, any> | null,
-            items: job.result.items,
+            docType: job.result.docType,
+            fields: job.result.fields,
+            lineItems: job.result.lineItems,
             reviewedAt: job.result.reviewedAt,
             approvedAt: job.result.approvedAt,
           }
@@ -603,11 +643,6 @@ export class DocumentService {
                   result: {
                     select: {
                       id: true,
-                      items: {
-                        select: {
-                          id: true,
-                        },
-                      },
                     },
                   },
                 },
@@ -698,12 +733,8 @@ export class DocumentService {
                       id: true,
                       jsonUrl: true,
                       csvUrl: true,
-                      items: {
-                        select: {
-                          id: true,
-                          name: true,
-                          total: true,
-                        },
+                      _count: {
+                        select: { fields: true, lineItems: true },
                       },
                     },
                   },
@@ -766,7 +797,8 @@ export class DocumentService {
               csvUrl: document.upload.job.result.csvUrl,
             }
           : null,
-        invoiceItems: document.upload?.job?.result?.items || [],
+        extractedFields: document.upload?.job?.result?._count.fields ?? 0,
+        lineItems: document.upload?.job?.result?._count.lineItems ?? 0,
         workspaceAssociations: document.workspace.length,
         totalRecordsToDelete: this.calculateTotalRecords(document),
       };
@@ -790,7 +822,7 @@ export class DocumentService {
     upload?: {
       job?: {
         result?: {
-          items: { id: string }[];
+          _count: { fields: number; lineItems: number };
         } | null;
       } | null;
     } | null;
@@ -809,7 +841,8 @@ export class DocumentService {
 
         if (document.upload.job.result) {
           total += 1; // DocumentResult record
-          total += document.upload.job.result.items.length; // InvoiceItems
+          total += document.upload.job.result._count.fields; // ExtractedFields
+          total += document.upload.job.result._count.lineItems; // LineItems
         }
       }
     }
@@ -825,25 +858,13 @@ export class DocumentService {
         id: string;
         result?: {
           id: string;
-          items: { id: string }[];
         } | null;
       } | null;
     } | null;
   }): Promise<void> {
     const { id: documentId, upload } = document;
 
-    // Step 1: Delete InvoiceItems (deepest level)
-    if (upload?.job?.result?.items) {
-      const itemIds = upload.job.result.items.map(item => item.id);
-      if (itemIds.length > 0) {
-        await this.prisma.invoiceItem.deleteMany({
-          where: { id: { in: itemIds } },
-        });
-        this.logger.log(`Deleted ${itemIds.length} invoice items for document ${documentId}`);
-      }
-    }
-
-    // Step 2: Delete DocumentResult
+    // Step 1: Delete DocumentResult (ExtractedField + LineItem cascade via onDelete)
     if (upload?.job?.result?.id) {
       await this.prisma.documentResult.delete({
         where: { id: upload.job.result.id },
