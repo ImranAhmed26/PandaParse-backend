@@ -16,7 +16,9 @@ export class S3ObjectService {
   private readonly s3: S3Client;
   private readonly inputBucket: string;
   private readonly outputBucket: string;
-  private readonly downloadUrlTtl = 900; // 15 minutes
+  // Short TTL: the presigned URL only needs to survive the editor's initial file load.
+  // Kept tight so a leaked/shared link (it's a bearer URL) stops working quickly.
+  private readonly downloadUrlTtl = 120; // 2 minutes
 
   constructor(private readonly config: ConfigService) {
     // Trim env values: a stray space or CRLF newline in a bucket name makes the AWS
