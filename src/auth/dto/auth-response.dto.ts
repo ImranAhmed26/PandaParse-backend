@@ -22,6 +22,12 @@ export class UserDto {
     enum: Object.values(USER_TYPES),
   })
   userType!: number;
+
+  @ApiProperty({ required: false, nullable: true, description: 'Profile picture URL' })
+  image?: string | null;
+
+  @ApiProperty({ required: false, description: 'Whether the email address is verified' })
+  emailVerified?: boolean;
 }
 
 export class AuthResponseDto {
