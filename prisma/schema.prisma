@@ -9,12 +9,15 @@ datasource db {
 }
 
 model User {
-  id        String   @id @default(uuid())
-  email     String   @unique
-  name      String
-  password  String
-  role      Int      @default(2) // 0=ADMIN, 1=INTERNAL, 2=USER
-  createdAt DateTime @default(now())
+  id            String   @id @default(uuid())
+  email         String   @unique
+  name          String
+  password      String?  // null for accounts created via an OAuth provider (e.g. Google)
+  role          Int      @default(2) // 0=ADMIN, 1=INTERNAL, 2=USER
+  image         String?  // profile picture URL (e.g. from Google)
+  googleId      String?  @unique // Google account subject ("sub"); set when linked
+  emailVerified Boolean  @default(false)
+  createdAt     DateTime @default(now())
 
   // 🔁 Belongs to a company (if not solo)
   companyId String?

@@ -3,6 +3,7 @@ import { AuthService } from './auth.service';
 import { LoginDto } from './dto/login.dto';
 import { RegisterDto } from './dto/register.dto';
 import { RefreshDto } from './dto/refresh.dto';
+import { GoogleLoginDto } from './dto/google-login.dto';
 import { ApiTags, ApiResponse, ApiOperation } from '@nestjs/swagger';
 import { AuthResponseDto } from './dto/auth-response.dto';
 
@@ -39,6 +40,21 @@ export class AuthController {
   })
   register(@Body() dto: RegisterDto): Promise<AuthResponseDto> {
     return this.authService.register(dto);
+  }
+
+  @Post('google')
+  @ApiOperation({ summary: 'Sign in or sign up with a Google ID token' })
+  @ApiResponse({
+    status: 201,
+    description: 'Google sign-in successful',
+    type: AuthResponseDto,
+  })
+  @ApiResponse({
+    status: 401,
+    description: 'Invalid or unverified Google credential',
+  })
+  googleLogin(@Body() dto: GoogleLoginDto): Promise<AuthResponseDto> {
+    return this.authService.googleLogin(dto.idToken);
   }
 
   @Post('refresh')
